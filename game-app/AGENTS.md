@@ -14,6 +14,7 @@ The main application layer of TripleA, organized as several Gradle submodules.
 | `map-data`          | Map file parsing — XML game data and YAML map metadata                                |
 | `game-relay-server` | WebSocket relay server that broadcasts messages between game clients                  |
 | `smoke-testing`     | Save game compatibility tests — downloads save files and verifies they load correctly |
+| `general-staff`     | AI General Staff: read-only JSON position export, engine-backed battle odds, plan evaluation |
 
 ## Shared Conventions
 
