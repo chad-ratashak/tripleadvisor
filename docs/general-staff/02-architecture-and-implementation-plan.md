@@ -1,8 +1,7 @@
 # TripleA AI General Staff — Architecture and Implementation Plan
 
-Date: 2026-10-29. Status: **M0 complete** (2026-10-30: the `:general-staff` module exists, its 17 tests
-are green and the proof of concept runs; see [03-status-and-results.md](03-status-and-results.md)).
-Everything not listed there is still a proposal. Every engine fact the plan relies on is a verified
+Date: 2026-10-29. Status: **M0–M5 complete and M6's first slice delivered** (2026-10-30; see
+[03-status-and-results.md](03-status-and-results.md)). What remains of M6 is listed there. Every engine fact the plan relies on is a verified
 finding in [01-reconnaissance-report.md](01-reconnaissance-report.md) (cited as "Recon §n"); the
 brief is [00-brief.md](00-brief.md).
 
@@ -143,7 +142,7 @@ Phase numbers follow the brief. Effort is a rough guide for one engineer plus ag
   with Wilson intervals and the Operation Paris proof of concept with a CLI (M2's first slice). Status
   and measurements: [03-status-and-results.md](03-status-and-results.md).
 
-### M1 — Phase 2 read-only bridge (2–3 days)
+### M1 — Phase 2 read-only bridge (2–3 days) — **done 2026-10-30** (no `--maps-folder` override yet; not needed to load a file by path)
 - `engine.GameLoading`: open a game XML (`GameParser.parse`) or a `.tsvg` (`GameDataManager.loadGame`) with `ClientSetting` initialised; a `--maps-folder` override via `ClientSetting.mapFolderOverride`.
 - `observe.ObservationExporter` → `GameObservation` JSON (brief §6 fields: current player and step from `GameSequence`, territories with owner/production/capital/VC/units, per-player PUs, income estimate, objectives and whether satisfied, relationships, key rule flags). Unit stacks as counts per owner and type; TUV via `TuvCostsCalculator`.
 - `observe.HistoryLogExporter`: headless re-implementation of `HistoryLog`'s tree walk → move log JSON.
@@ -151,7 +150,7 @@ Phase numbers follow the brief. Effort is a rough guide for one engineer plus ag
 - Tests: `G40FixtureFactsTest` pins the verified map facts (capital = France, adjacency, 12 defenders, 19 PUs) so fixture drift is caught; golden JSON snapshots on `GLOBAL1940` and `MINIMAP`.
 - Exit: the France observation printed from both the fixture and (if installed) the live map.
 
-### M2 — Phase 4 first slice: tactical evaluation and the PoC (3–4 days; independent of M3)
+### M2 — Phase 4 first slice: tactical evaluation and the PoC (3–4 days; independent of M3) — **done 2026-10-30**
 - `odds.BattleOddsService`: wraps `ConcurrentBattleCalculator`; returns a `BattleEstimate` record with rates, CIs, n, average survivors, TUV swing, and the per-run outcome histogram from `getResults()`.
 - `odds.StrafeEvaluator`: sweeps `setRetreatAfterRound` and reports survivor distributions and the unintended-conquest rate.
 - `rules.LegalityChecker`: `MoveValidator` dry run on a clone positioned at a named step (clone via `cloneGameData(withDelegates(true))`, then `GameSequence.setRoundAndStep` as `AbstractProAi` does); `rules.ReachabilityIndex`: per-unit candidate destinations = `getNeighborsByMovementCost` filtered by `getRouteForUnits` + `validateMove`.
@@ -159,7 +158,7 @@ Phase numbers follow the brief. Effort is a rough guide for one engineer plus ag
 - Measure and record: clone time, calculator runs/second, heap, for G40 on this Mac (Recon §13).
 - Exit: PoC report produced; legality checker agrees with `MoveDelegate.performMove` on a table of known legal/illegal moves (`LegalityCheckerTest`).
 
-### M3 — Phase 3 conversational advisor (3–4 days; can run in parallel with M2)
+### M3 — Phase 3 conversational advisor (3–4 days; can run in parallel with M2) — **done 2026-10-30** (eval results in [llm-eval.md](llm-eval.md))
 - `llm.OllamaClient` (`/api/chat`, JSON-schema `format`, temperature 0 for parsing).
 - `llm.IntentParser`: directive text + compact observation → `StrategicDirective` JSON (brief §6); every named territory/player/unit type is validated against the observation; unknown names are returned as clarification questions, never guessed.
 - `llm.Explainer`: turns `GameObservation` and later `PlanEvaluation` into staff-style briefings; prohibited from inventing numbers — all figures are interpolated from the JSON by code, not generated.
@@ -167,21 +166,21 @@ Phase numbers follow the brief. Effort is a rough guide for one engineer plus ag
 - Tests: `IntentParserTest` on recorded Ollama responses (offline); a schema-compliance eval over ~20 fixed directives, run per model, recorded in `docs/general-staff/llm-eval.md`; smoke test behind an env flag when Ollama is running.
 - When the HTTP API exists, add the project launcher per the house conventions (`/launch`, `Launch TripleAdvisor.command`, `.port` in the backend range, stale-port kill, iCloud preflight).
 
-### M4 — Phase 5 Operation Paris planner (5–7 days)
+### M4 — Phase 5 Operation Paris planner (5–7 days) — **done 2026-10-30** (trajectories by fork, not by rollback; see the status doc)
 - `sim.Sandbox`: clone with delegates + `StaffDelegateBridge` (seedable `IRandomSource`, `DelegateHistoryWriter.createNoOpImplementation()`, headless display, a `Player` that answers casualty/retreat callbacks by policy). Branching via `CompositeChange.invert()` where possible, re-clone otherwise.
 - `sim.TurnSimulator`: apply an ordered action list through the real delegates on the clone; fight pending battles with real `MustFightBattle`s under the seeded source (sampled, not averaged); advance steps with `GameSequence`; run `OpponentPolicy` for intervening players.
 - `plan.OperationParisPlanner`: enumerate the plan families above with `ReachabilityIndex`-generated unit subsets; evaluate each with N trajectories; `plan.PlanEvaluator` ranks lexicographically; emit `OperationalPlan` JSON with executable `MoveDescription`s and the explanation inputs.
 - Tests: `SandboxIsolationTest` (live data byte-identical after simulation); `TurnSimulatorTest` on `MINIMAP`/`DELEGATE_TEST` with scripted dice; `OperationParisPlannerTest` asserting constraint handling (the full-attack family is rejected; the air-only family reports violation rate 0) and output schema.
 - Exit: a ranked Operation Paris report with CIs from the live 2nd Edition map.
 
-### M5 — Phase 6 approved execution (4–6 days)
+### M5 — Phase 6 approved execution (4–6 days) — **done 2026-10-30** (movement orders; purchases and placement stay with the engine's defaults)
 - `engine.HeadlessGameHost` + `engine.StaffLaunchAction` (own `LaunchAction`, no Mockito/game-headless dependency): start a `ServerGame` from XML or `.tsvg` with a chosen player map (`PlayerTypes.Type` instances built in-process; FastAi/ProAi for other powers), autosave folder redirected to a scratch directory.
 - `staff.StaffPlayer extends AbstractAi`: implements `purchase/tech/move/place`, overrides `battle` and the casualty/retreat callbacks; inside `start(stepName)` it blocks on `staff.ApprovalGate` (the engine thread waits exactly as it does for a human) until the operator approves, edits, or rejects the step's orders through the HTTP API; saves via `ServerGame.saveGame` before executing; logs every delegate return value; stops on any `Optional<String>` error and reports the deviation.
 - After-action report from the history delta since the step began.
 - Tests: `StaffPlayerTest` drives a `ServerGame` on `MINIMAP` with an auto-approving gate and asserts progress; a blocking-gate test; a save-before-execute test.
 - Optional two-line registration in `HeadedPlayerTypes.getPlayerTypes()` to play inside the desktop client (the only `game-core`/`game-headed` edit in the whole plan, and still optional).
 
-### M6 — Phase 7 full General Staff (ongoing)
+### M6 — Phase 7 full General Staff (ongoing) — **first slice done 2026-10-30**: doctrine store and reconciler, hybrid delegation of a step's remainder to Fast AI, Fast AI opponents in hosted games, the command page at `/ui`, and the end-to-end test from directive to approved execution
 - Doctrine store (JSON per campaign; reconciled against each new observation; surfaced as conflicts, never silently applied), multi-theatre directives with per-theatre delegation (hybrid mode), opponent modelling with FastAi/ProAi on sandboxes (never the live ProAi's static calculator), a web command UI over the HTTP API, and the "Caucasus + Paris + Luftwaffe + favourable naval ops" success-criterion scenario as an end-to-end test.
 
 ## Anticipated obstacles and mitigations

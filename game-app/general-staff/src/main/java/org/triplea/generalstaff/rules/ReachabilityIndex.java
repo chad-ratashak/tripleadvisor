@@ -22,19 +22,18 @@ import org.triplea.generalstaff.rules.ReachabilityReport.UnitReach;
 /**
  * Generate-and-test enumeration of legal destinations: candidates come from the map's neighbour
  * search within the unit's remaining movement, routes from the map's route finder, and the verdict
- * from {@link LegalityChecker}. Nothing here guesses a rule.
+ * from a {@link MoveJudge} (a {@link LegalityChecker} or a sandbox). Nothing here guesses a rule.
  */
 public final class ReachabilityIndex {
   private ReachabilityIndex() {}
 
   /** Every legal destination for every movable unit group of the checker's player and step. */
-  public static ReachabilityReport compute(final LegalityChecker checker) {
+  public static ReachabilityReport compute(final MoveJudge checker) {
     return compute(checker, Optional.empty());
   }
 
   /** As {@link #compute(LegalityChecker)}, limited to units standing in {@code origin}. */
-  public static ReachabilityReport compute(
-      final LegalityChecker checker, final Optional<String> origin) {
+  public static ReachabilityReport compute(final MoveJudge checker, final Optional<String> origin) {
     final GameData data = checker.gameCopy();
     final GamePlayer player = checker.player();
     final GameMap map = data.getMap();
@@ -69,7 +68,7 @@ public final class ReachabilityIndex {
   }
 
   private static List<Destination> destinations(
-      final LegalityChecker checker,
+      final MoveJudge checker,
       final GameMap map,
       final Territory origin,
       final Unit unit,

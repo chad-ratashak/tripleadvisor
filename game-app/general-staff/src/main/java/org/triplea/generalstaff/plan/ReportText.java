@@ -45,6 +45,40 @@ final class ReportText {
 
   static final String EXPECTED_LOSSES = "Expected losses";
 
+  static final String VIOLATION_GERMAN_CONQUEST =
+      "Germany conquers France in %s of trajectories; the directive allows at most %.1f%%.";
+  static final String VIOLATION_ORDERS_REFUSED =
+      "The engine refused some of the plan's orders (all accepted in %s of trajectories).";
+
+  static final String PLAN_TITLE =
+      "Operation Paris: candidate plans ranked by sampled trajectories";
+  static final String PLAN_TRAJECTORIES = "Trajectories per plan";
+  static final String PLAN_TOLERANCE = "Tolerated chance of a German conquest";
+  static final String PLAN_INTERVENING = "Allied move between the German and Italian turns";
+  static final String PLAN_COLUMNS =
+      "rank  plan                          Italy owns France             Germany conquers France       orders ok  Ger. TUV lost  Ger. aircraft lost  Ita. TUV lost  Ita. PU gain";
+  static final String PLAN_FEASIBLE = "keeps the constraint";
+  static final String PLAN_INFEASIBLE = "REJECTED";
+  static final String PLAN_ORDERS = "Orders of the top plan";
+  static final String PLAN_NOT_EVALUATED = "Not evaluated";
+  static final String PLAN_NONE_FEASIBLE =
+      "No candidate keeps the constraint; the least violating one is listed first.";
+  static final List<String> PLAN_ASSUMPTIONS =
+      List.of(
+          "Each trajectory is a fresh copy of the game. The German combat move, German battle,"
+              + " the intervening power's non-combat move, the Italian combat move and the Italian"
+              + " battle are run by the engine's own delegates with seeded dice; purchases, placement,"
+              + " end-of-turn income and the other powers' turns are skipped.",
+          "German orders move the chosen force into France along the shortest route; the retreat"
+              + " round is answered by the staff's stand-in player exactly when the engine asks.",
+          "Italian orders move Italy's strike force into France whenever France is still enemy-held,"
+              + " and are skipped when Germany already owns it.",
+          "The Italian PU gain is the treasury change at capture (the French bank), not income.",
+          "Figures exclude infrastructure. Rates carry 95% Wilson intervals; the sample size is the"
+              + " number of trajectories per plan.",
+          "The delayed-conquest family (strike on the German turn, attack on Italy's next turn)"
+              + " needs a full round of all powers' turns and is listed as not evaluated.");
+
   static final String ASSUMPTIONS_TITLE = "Assumptions and limits";
   static final List<String> ASSUMPTIONS =
       List.of(

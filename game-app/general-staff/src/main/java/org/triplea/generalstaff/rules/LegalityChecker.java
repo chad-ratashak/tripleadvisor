@@ -30,7 +30,7 @@ import org.triplea.generalstaff.sim.StaffDelegateBridge;
  * <p>{@link #apply} performs a move on the copy through the real move delegate, so a sequence of
  * moves can be checked with the copy's units already moved.
  */
-public final class LegalityChecker {
+public final class LegalityChecker implements MoveJudge {
   private final GameData copy;
   private final GameStep step;
   private final GamePlayer player;
@@ -73,24 +73,29 @@ public final class LegalityChecker {
     return new LegalityChecker(copy, step, player, nonCombat, moveDelegate);
   }
 
+  @Override
   /** The private copy of the game this checker works on. */
   public GameData gameCopy() {
     return copy;
   }
 
+  @Override
   /** The step's player, as an object of the copy. */
   public GamePlayer player() {
     return player;
   }
 
+  @Override
   public String stepName() {
     return step.getName();
   }
 
+  @Override
   public boolean isNonCombatMove() {
     return nonCombat;
   }
 
+  @Override
   /** Dry run: validates the move without changing the copy. */
   public MoveVerdict check(final Collection<Unit> units, final Route route) {
     final List<Unit> copyUnits = translateUnits(units);
@@ -99,7 +104,7 @@ public final class LegalityChecker {
         new MoveValidator(copy, nonCombat)
             .validateMove(
                 new MoveDescription(copyUnits, copyRoute), player, moveDelegate.getMovesMade());
-    return verdict(copyUnits, copyRoute, result);
+    return verdict(step.getName(), nonCombat, player, copyUnits, copyRoute, result);
   }
 
   /**
@@ -140,8 +145,14 @@ public final class LegalityChecker {
         new MoveDescription(translateUnits(units), translateRoute(route)));
   }
 
-  private MoveVerdict verdict(
-      final List<Unit> units, final Route route, final MoveValidationResult result) {
+  /** Builds a verdict from the engine's validation result. */
+  public static MoveVerdict verdict(
+      final String stepName,
+      final boolean nonCombat,
+      final GamePlayer player,
+      final List<Unit> units,
+      final Route route,
+      final MoveValidationResult result) {
     final List<String> warnings = new ArrayList<>();
     if (result.hasDisallowedUnits()) {
       warnings.add(result.getDisallowedUnitWarning(0));
@@ -152,7 +163,7 @@ public final class LegalityChecker {
     final boolean legal =
         !result.hasError() && !result.hasDisallowedUnits() && !result.hasUnresolvedUnits();
     return new MoveVerdict(
-        step.getName(),
+        stepName,
         nonCombat,
         player.getName(),
         UnitCounts.of(units),

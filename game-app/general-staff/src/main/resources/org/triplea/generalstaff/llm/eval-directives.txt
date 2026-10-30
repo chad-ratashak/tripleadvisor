@@ -1,0 +1,22 @@
+# Directives for the parsing evaluation, one per line. Mixed on purpose: clear ones, ones that
+# name cities rather than territories, ones that need a question back, and naval and economic ones.
+Italy, not Germany, must capture Paris this round. Germany may soften the French garrison but must not take the capital itself.
+Take Paris with Italian troops; Germany supports from the air only.
+Germany: destroy the French army in France this turn but leave the territory for Italy to walk in.
+Preserve German armour for the eastern front; infantry and aircraft may be spent against France.
+Italy must own France by the end of round 1, whatever it costs.
+Germany should not lose more than two aircraft this turn.
+Hold Northern Italy at all costs while the Italian army attacks France.
+Do not attack Russia this round under any circumstances.
+Prepare for war with Russia next round: move the German infantry in Germany and Poland east.
+Capture Egypt with Italian forces within two rounds.
+Keep the Luftwaffe out of range of British fighters this turn.
+Germany takes Holland Belgium's neighbours and Italy takes Southern France.
+Clear the Mediterranean of British warships so Italy collects its objective.
+Spend all German production on infantry and artillery this turn.
+Italy should bomb the factory in France rather than attack the units.
+Avoid any battle this turn that gives the enemy better than even odds.
+Germany should take the capital of the French with minimal losses.
+Capture Moscow.
+Win the war.
+Italy must take Paris; if that cannot be done this round, say so and propose the next best step.

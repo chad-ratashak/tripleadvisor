@@ -19,4 +19,6 @@ dependencies {
 tasks.named<Test>("test") {
     // The battle calculator deserializes one copy of the Global 1940 game data per worker thread.
     maxHeapSize = "2G"
+    // Eight 2 GB test JVMs do not fit an 8 GB machine; two forks keep the hosted-game tests honest.
+    maxParallelForks = 2
 }

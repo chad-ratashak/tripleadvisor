@@ -1,12 +1,16 @@
-# TripleA AI General Staff — Status and First Results
+# TripleA AI General Staff — Status and Results
 
-Date: 2026-10-30. Milestone **M0 is complete** and the brief's minimal proof of concept (brief
-§14.7) runs on the checked-in Global 1940 Balanced fixture. The plan is
+Date: 2026-10-30. Milestones **M0 through M5 are complete and M6 has its first slice**, all on the
+`general-staff` branch: the module builds, its 73 tests are green and the repo-wide `./verify`
+passes. Every phase of the brief now has working code: read-only bridge (2), conversational advisor
+(3), tactical evaluation (4), the Operation Paris planner (5), approved execution (6) and the start
+of the full General Staff (7). The plan is
 [02-architecture-and-implementation-plan.md](02-architecture-and-implementation-plan.md); the
-verified engine findings are [01-reconnaissance-report.md](01-reconnaissance-report.md).
+verified engine findings are [01-reconnaissance-report.md](01-reconnaissance-report.md); the
+language-model measurements are [llm-eval.md](llm-eval.md).
 
-Everything in "Engine facts learned" below was verified by running code; the results table is the
-engine's battle calculator output under the stated assumptions, not a plan recommendation.
+Everything under "Engine facts learned" was verified by running code. The results tables are the
+engine's output under the stated assumptions, not plan recommendations.
 
 ## What exists
 
@@ -14,20 +18,34 @@ The Gradle subproject `:general-staff` at [game-app/general-staff](../../game-ap
 (registered in `settings.gradle.kts`; conventions in its
 [AGENTS.md](../../game-app/general-staff/AGENTS.md)). No file under `game-core` was changed.
 
-| Package (`org.triplea.generalstaff`) | Classes | Does |
-|---|---|---|
-| `engine` | `GameLoading`, `EngineSettings`, `InMemoryPreferences` | Opens a map XML or `.tsvg`; gives the engine in-memory client settings when no host has initialized them |
-| `observe` | `ObservationExporter`, `GameObservation`, `UnitCounts` | Read-only JSON snapshot: step, players (PUs, production, capitals, objective definitions), relationships, territories (owner, production, capital, VC, neighbours, unit stacks); whole map or a focus set plus neighbours |
-| `odds` | `BattleOddsService`, `BattleScenario`, `BattleOptions`, `BattleEstimate`, `Proportion` | Wraps `ConcurrentBattleCalculator`; every rate is a `Proportion` with `n` and a 95% Wilson interval; per-run survivor distribution and expected losses by type |
-| `plan` | `OperationParisBaseline`, `OperationParisReport`, `ReportFormatter`, `ReportText` | The proof of concept: forces chosen by position and range, seven calculator scenarios, a sampled Italian follow-up, a one-page text report and a JSON report |
-| `api` | `Cli`, `CliText` | `observe --game <file> [--focus T]...` and `odds paris --game <file> [--runs N] [--seed S] [--max-pools K] [--json]` |
+| Package (`org.triplea.generalstaff`) | Does |
+|---|---|
+| `engine` | Opens a map XML or `.tsvg`; gives the engine in-memory client settings; **hosts a whole game in this JVM** (`HeadlessGameHost` over the engine's `ServerGame` with a headless `StaffLaunchAction`) |
+| `observe` | Read-only JSON: position (players with treasuries, production, capitals, objectives **evaluated by the engine's own condition code**, relationships, territories with unit stacks) and the history tree |
+| `sim` | **The engine on copies**: `Sandbox` (a deserialized copy with seeded dice; branch by `fork`), `TurnSimulator` (starts the real delegate, performs orders through the real move delegate, fights with the real battle code, ends the delegate), `StaffDelegateBridge`, `SimulationPlayer` (retreat-after-round policy), `OpponentPolicy` (passive, reinforce a territory) |
+| `rules` | `LegalityChecker` (engine validator or real delegate on a positioned copy), `ReachabilityIndex` (legal destinations per unit group), `MoveJudge` |
+| `odds` | `BattleOddsService` over `ConcurrentBattleCalculator`; `StrafeEvaluator` over force subsets and retreat rounds; every rate a `Proportion` with `n` and a 95% Wilson interval |
+| `plan` | `OperationParisBaseline` (calculator PoC) and **`OperationParisPlanner`**: eleven plan families (Italy alone; air strikes retreating after rounds 1–3; strafes with 3, 6 or 9 cheapest land units retreating after rounds 1–2; the full attack), each sampled by N trajectories on forked sandboxes (German combat move and battle, an intervening Allied policy, the Italian combat move and battle), ranked lexicographically by `PlanEvaluator` under the hard constraint |
+| `staff` | **Approved execution**: `StaffPlayer` is an `AbstractAi` that proposes a step's orders to the `ApprovalGate`, blocks the engine thread until the operator decides, saves the game, performs the approved orders through the real delegate and records every answer; `ExecutionSession` hosts a game with the staff as one or more powers and idle stand-ins or the engine's Fast AI as the others; `AfterActionReport`; hybrid mode hands a step's remainder to Fast AI |
+| `doctrine` | `DoctrineStore` (standing directives in a JSON file, with the war footing among named powers when added) and `DoctrineReconciler` (unknown names, achieved targets, new wars, peace) |
+| `llm` | `OllamaClient`, `IntentParser` (directive → checked JSON, unknown names become questions), `Explainer` (briefings around labelled engine figures, invented digits flagged), `DirectiveEval` |
+| `api` | `StaffService`, the `Cli`, `LocalHttpApi` (loopback JSON; **the command page at `/ui`** with wording, wiring and layout in separate files) |
 
-Tests (17, all green): `GeneralStaffSmokeTest` (M0 exit), `ObservationExporterTest` (pins the map
-facts the planner relies on: capital `France`, six neighbours, 12 combat units + 2 infrastructure,
-treasuries 19/30/10, no Axis objective naming France, war/neutrality matrix, opening step),
-`ProportionTest` (Wilson arithmetic), `BattleOddsServiceTest` (every run counted once; temporary
-units never enter the live unit list), `OperationParisBaselineTest` (end to end; live game data
-structurally identical to the fresh parse and byte-identical between runs).
+**Tests: 73**, all offline. Beyond the earlier ones: `SandboxTest` (independence of forks and of the
+live game; same seed, same battle), `TurnSimulatorTest` (refused orders reported, real battle
+outcomes recorded, retreat policy honoured), `OpponentPolicyTest`, `OperationParisPlannerTest`
+(the full attack is rejected, the air strike never conquers, feasible plans rank first, live game
+untouched), `HeadlessGameHostTest` (a whole Minimap game to round 2, saved and reloaded),
+`ApprovalGateTest`, `StaffPlayerTest` (approved orders execute through the real delegate after a
+save; a manual gate blocks the engine and a rejection moves nothing), `HybridDelegationTest` (Fast AI
+takes the rest of a step), `DoctrineStoreTest`, and `GeneralStaffEndToEndTest` (directive → doctrine
+→ plan → approved execution → reconciliation, on the fixture, offline).
+
+**Command line**: `observe`, `history`, `legal`, `reach`, `odds paris`, `odds strafe`, `plan paris`,
+`advise`, `explain`, `eval`, `host`, `doctrine`, `serve`. **Local API** (loopback only; `GET /` lists
+it): position, rules, odds and plan endpoints, `/parse-directive`, `/explain`, the `/execute/*` gate
+(`start`, `orders`, `status`, `approve`, `reject`, `report`, `stop`), `/doctrine/*`, and `/ui`.
+**Launcher**: `/launch` and `Launch TripleAdvisor.command` start `serve` on the port in `.port`.
 
 Run it (no JDK is on this Mac's PATH):
 
@@ -47,9 +65,16 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home
 
 | Measurement | Value |
 |---|---|
-| Baseline, 1,000 runs per scenario (7 scenarios + 11 follow-up pools of 200, about 9,200 battles, including the calculator's per-worker copies of the game data) | 4.7 s wall warm, 7.9 s on the first run of a JVM |
-| `:general-staff:check` warm (format check, PMD, 17 tests) | about 30 s |
+| Operation Paris baseline, 1,000 runs per scenario (about 9,200 battles incl. the calculator's per-worker copies of the game data) | 4.7 s wall warm, 7.9 s on the first run of a JVM |
+| Copy of Global 1940 with delegates for a legality check | about 1 s |
+| Reachability of every German unit group at `germansCombatMove` (37 groups, 391 legal destinations, each validated by the engine) | 0.57 s |
 | Serialized Global 1940 game data (calculator options, no history) | 751 KB |
+| `:general-staff:check` warm (format check, PMD, 55 tests) | about 30 s |
+| One short directive through Ollama structured output (model load included) | llama3.2:3b 11 s, phi4-mini 10 s, gemma4:e2b 25 s |
+| Planner: 11 families × 6 trajectories (66 forked copies of Global 1940, each running five engine steps with real battles), from the CLI including JVM start | 43 s wall |
+| Hosted game in this JVM: Germany staffed, nine idle powers, round 1 with two approved orders, saves before each movement step | about 6 s |
+| End-to-end test (directive → doctrine → 2 families × 4 trajectories → hosted execution → reconciliation) | 22 s |
+| `:general-staff:check` warm (format check, PMD, 73 tests, two forks) | about 80 s |
 
 ## First results: Operation Paris on the Balanced fixture (seed 7, n = 1,000 per scenario)
 
@@ -74,20 +99,73 @@ walk-ins into an emptied France 20.9% [18.5–23.5]; no survivor set was left un
 
 What the numbers say to the planner (observations about the method, not conclusions about play):
 
-- **Force sizing is the lever, and the baseline does not search it.** The whole German force
-  conquers France even when told to retreat after one round a quarter of the time, and almost
-  always after two. A strafe that respects "Germany must not take France" needs a smaller force,
-  which means searching unit subsets; that needs the legality checker and reachability index
-  (M2), not more calculator runs.
+- **Force sizing is the lever, and M2 now provides the tools to search it.** The whole German
+  force conquers France even when told to retreat after one round a quarter of the time, and
+  almost always after two. `odds strafe` sweeps smaller forces; `reach` and `legal` say which
+  units may actually get there. Searching plans over those is M4.
 - **An uncontrolled air strike is ruinous.** With the planes told to fight on, the Luftwaffe loses
-  about 8.5 of 9 aircraft to empty France one time in five. The planner needs a round-limited air
-  strike (retreat after k rounds) and must price aircraft losses, which the engine's Attacker
-  Retreat Planes rule makes legal.
+  about 8.5 of 9 aircraft to empty France one time in five. The planner needs round-limited air
+  strikes and must price aircraft losses.
 - **The follow-up estimate is an upper bound.** It ignores Britain's move between the German and
   Italian turns and re-creates survivors at full strength. The trajectory simulator (M4) replaces
   this shortcut with real moves on a cloned game.
 
-## Engine facts learned in M0 (verified by running)
+## Planner results: sampled trajectories (seed 5, 6 trajectories per plan, intervening power passive)
+
+Six trajectories give very wide intervals (a 0-of-6 is 0% [0–39%]); the point is the method and the
+ordering, not the digits. Figures are the engine's: real moves, real battles with seeded dice.
+
+| rank | plan | Italy owns France | Germany conquers France | German TUV lost | Italian PU gain |
+|---|---|---|---|---|---|
+| 1 | strafe-6land-r1 (aircraft + 6 cheapest land units, retreat after round 1) | 100% [61–100] | 0% [0–39] | 116 | 19.0 |
+| 2 | strafe-6land-r2 | 100% [61–100] | 0% [0–39] | 116 | 19.0 |
+| 3 | air-strike-r1 | 83% [44–97] | 0% [0–39] | 98 | 15.8 |
+| 7 | air-strike-r3 | 50% [19–81] | 0% [0–39] | 98 | 9.5 |
+| 8 | italy-alone | 0% [0–39] | 0% [0–39] | 0 | 0 |
+| 9 | strafe-9land-r2 | 33% [10–70] | **67% [30–90]** | 120 | 6.3 |
+| 11 | full-attack | 0% [0–39] | **100% [61–100]** | 114 | 0 |
+
+Three things the planner established that the calculator alone could not:
+
+- **The constraint has a force-size cliff.** Six cheapest land units with the aircraft never
+  conquered France in these samples; nine did so two times in three. The planner found the cliff by
+  running the real battle with the real retreat rule, which is exactly the kind of fact a human
+  staff would otherwise estimate.
+- **Every German aircraft died in every strike.** The current German retreat policy answers the
+  engine's retreat question only by round, and once the land units are gone the aircraft fight on.
+  "German TUV lost" is therefore dominated by nine aircraft (about 98 TUV). A policy that pulls
+  aircraft out when the land units are gone (as the calculator's "retreat when only air is left"
+  does) is the first improvement to make; it is a one-line change in `SimulationPlayer`.
+- **The Italian PU gain is the French bank** (19 PUs when Italy walks in or wins), visible as the
+  treasury change at capture, confirming the reconnaissance finding by running it.
+
+Not evaluated, and said so in the report: the delayed-conquest family (strike on the German turn,
+attack on Italy's next turn), which needs a full round of every power's turn.
+
+## Approved execution: what a hosted turn looks like
+
+`host --game <fixture> --staff Germans --orders orders.json --rounds 1` ran the first German turn
+in this JVM with idle stand-ins for the other powers. The staff recorded: no purchase (left to the
+engine's defaults), a save before the combat move, two orders performed through the real move
+delegate (2 infantry Holland Belgium → France, 2 fighters Western Germany → France), and a save
+before the non-combat move; the battle was fought by the engine with the planned retreat round. With
+a manual gate the engine thread blocks at the combat move until `/execute/approve` or
+`/execute/reject` arrives; `StaffPlayerTest` proves both paths.
+
+## The language layer, and how it is kept honest
+
+- `IntentParser` sends the whole-map observation's player names, capitals and territory names with
+  the directive and asks for a fixed JSON shape (Ollama's structured output). Every player and
+  territory name in the answer is checked against the observation; an unknown name becomes a
+  question back to the commander with the closest real names and the relevant capitals ("Paris" →
+  "France (French)"). `valid` is false until there is nothing left to ask.
+- `Explainer` gives the model labelled facts (`{F1} = description = value`) and lets it cite them
+  only by label; code fills the figures in. Any digits the model wrote itself are reported in the
+  briefing's `warnings`, as is a briefing that cites no figure at all.
+- Models are local and U.S.-origin (Ollama 0.40.9: `gemma4:e2b` default, `phi4-mini`, `llama3.2`).
+  Their measured parsing quality is in [llm-eval.md](llm-eval.md).
+
+## Engine facts learned (verified by running)
 
 1. **Battles need `ClientSetting` initialized.** `GameObjectInputStream.resolveUnit` reads
    `showSerializeFeatures` while translating units into the calculator's copies, and
@@ -110,12 +188,58 @@ What the numbers say to the planner (observations about the method, not conclusi
    the map is installed.
 6. **Nine, not ten, German aircraft** start within return range of France (3 fighters, 4 tactical
    bombers, 2 bombers); the plan document's "10 aircraft" was a miscount and has been corrected.
+7. **`IDelegateBridge.sendMessage` names `WebSocketMessage`** from `:lobby-client-data`, so any
+   module that implements a bridge needs that project as a dependency.
+8. **`MoveValidator` reports too little movement as a disallowed unit, not an error.** A move is
+   legal exactly when the result has no error, no disallowed unit and no unresolved unit, which
+   is `MoveDelegate.performMove`'s own acceptance test; the dry run agreed with the real delegate
+   on all nine moves in `LegalityCheckerTest`.
+9. **The validator reads the current step**, so a copy must be positioned with
+   `GameSequence.setRoundAndStep` (display name and player) before validating; Pro AI does the
+   same, and does not call the move delegate's `start()` in its simulation.
+10. **`HistoryWriter` only insists on the Swing thread when the game data says changes are
+    Swing-only**, so history can be built and exported headless; a `.tsvg` written by
+    `GameDataManager.saveGame` round-trips it exactly.
+11. **Anti-aircraft guns can move but not during combat movement**: the reachability index lists
+    the group with zero legal destinations, so a planner sees both the unit and the refusal.
+12. **Objectives can be evaluated outside the end-turn step** with the engine's own
+    `testAllConditionsRecursive` through a read-only bridge: at the start, Germany's
+    "trade with Russia" objective holds and "control the Caucasus" does not.
+
+13. **`BattleDelegate.start()` fights a lone battle by itself** (`fightBattleIfOnlyOne`) and the
+    defenceless ones, so anything that wants battle outcomes must take the pending list before
+    starting the delegate. The simulator does; its first version did not and saw no battles.
+14. **A sandbox made from a fixture must initialize client settings too**: the first battle in it
+    hits the same `ClientSetting` reads as the calculator. `Sandbox.fromBytes` now does it.
+15. **Branching by rollback is not enough across steps.** Inverting the journal restores the game
+    data but not delegate state (pending battles, moves made), so trajectories fork from a
+    serialized snapshot (about a second per fork for Global 1940) and run in a thread pool.
+16. **A whole `ServerGame` runs in this JVM from public engine API**: `ServerGame` with
+    `LocalNoOpMessenger`, `ClientNetworkBridge.NO_OP_SENDER`, a `LaunchAction` of our own that
+    installs `HeadlessDisplay` and `HeadlessSoundChannel`, `setDelegateAutosavesEnabled(false)`,
+    `ClientSetting.saveGamesFolderPath` pointed at a work folder (the engine still saves at each new
+    round), the AI pause settings at zero, and a code-source folder with `.triplea-root` and
+    `assets`. No Mockito, no `game-headless` dependency.
+17. **The engine blocks on a player exactly as designed.** `Player.start(stepName)` runs on the
+    engine thread; blocking inside it (the approval gate) halts the game until the operator answers,
+    and `ServerGame.saveGame` can be called from there because the delegate lock is free while the
+    player has the turn. `stopGame()` must release the gate or shutdown hangs.
+18. **Fast AI will play the rest of a step for another `Player`**: constructed with the staff's
+    name and label, initialized with the staff's own `PlayerBridge`, its `start(stepName)` moves
+    through the same delegate; its odds estimator needs no battle-calculator copies.
+19. **`PlayerTypes.Type` can be instantiated anonymously** to put a prepared `Player` instance into
+    the game loader, so the staff player never needs a registration edit in `game-core`.
 
 ## Open items carried forward
 
 - Owner decisions from the plan: map download permission, target ruleset (2nd Edition assumed),
-  CLI + HTTP first, upstream hooks.
-- M1 remainder: history/move-log export, a `.tsvg` loading test, golden JSON snapshots on
-  `MINIMAP` and `GLOBAL1940`.
-- M2: `LegalityChecker` and `ReachabilityIndex` (force subsets), `StrafeEvaluator` with
-  round-limited air strikes, clone-time measurement separate from battle time.
+  upstream hooks. CLI, API and a command page are in place.
+- Planner: pull aircraft out when the land units are gone; evaluate the delayed-conquest family
+  (needs full-round simulation with policies for every power); larger trajectory counts for real
+  intervals; a cheaper branch than re-deserializing a snapshot.
+- Execution: purchases and placement are still the engine's defaults for a staffed power;
+  per-theatre delegation maps a directive's `delegated_theaters` to units by hand today.
+- M6 remainder: Fast AI opponents run only in hosted games, not in sandboxes; the command page is
+  functional but plain; doctrine is reconciled on request, not automatically each turn.
+- Language models: grow the directive set beyond 20; try a few-shot prompt with the map's own
+  vocabulary; the shape failures of gemma4 need a look at the raw answers.

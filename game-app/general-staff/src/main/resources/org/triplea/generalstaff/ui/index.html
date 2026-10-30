@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title></title>
+<!-- LAYOUT ONLY. If you are here to change wording, you are in the wrong file: see text.js. -->
+<style>
+  :root { --ink:#1d2433; --muted:#5b6578; --line:#d9dee8; --panel:#f6f7fa; --accent:#2f5d9f; --bad:#a23b3b; --ok:#2d7a4b; }
+  @media (prefers-color-scheme: dark) { :root { --ink:#e6e9ef; --muted:#9aa4b5; --line:#2c3443; --panel:#161b24; --accent:#7fa6e0; } body { background:#0f131a; } }
+  body { margin:0; padding:16px; font:15px/1.45 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color:var(--ink); background:#fff; }
+  header h1 { margin:0 0 4px; font-size:22px; } header p { margin:0 0 16px; color:var(--muted); }
+  .top { display:grid; grid-template-columns: 1fr 240px; gap:12px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
+  input, select, textarea { width:100%; box-sizing:border-box; padding:8px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--ink); font:inherit; }
+  textarea { min-height:72px; }
+  section { border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:12px; }
+  section h2 { margin:0 0 10px; font-size:16px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; margin-bottom:8px; }
+  .row > div { flex:1 1 160px; }
+  button { padding:8px 12px; border:1px solid var(--accent); border-radius:6px; background:var(--accent); color:#fff; font:inherit; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--accent); }
+  pre { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:10px; overflow:auto; max-height:360px; font-size:12.5px; white-space:pre-wrap; }
+  table { border-collapse:collapse; width:100%; font-size:13px; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  footer { color:var(--muted); font-size:13px; margin-top:16px; }
+  @media (max-width: 720px) { .top { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header><h1 data-text="title"></h1><p data-text="subtitle"></p></header>
+<div class="top">
+  <div><label for="game" data-text="gameLabel"></label><input id="game" data-text="gamePlaceholder"></div>
+  <div><label for="model" data-text="modelLabel"></label><input id="model" value="gemma4:e2b"></div>
+</div>
+
+<section>
+  <h2 data-text="sections.observe"></h2>
+  <div class="row"><button id="observe" data-text="buttons.observe"></button></div>
+  <pre id="observeOut"></pre>
+</section>
+
+<section>
+  <h2 data-text="sections.advise"></h2>
+  <label for="directive" data-text="labels.directive"></label>
+  <textarea id="directive">Italy, not Germany, must capture Paris this round. Germany may soften the French garrison from the air but must not take the capital itself, and must keep its army for the east.</textarea>
+  <div class="row"><button id="advise" data-text="buttons.advise"></button></div>
+  <pre id="adviseOut"></pre>
+</section>
+
+<section>
+  <h2 data-text="sections.plan"></h2>
+  <div class="row">
+    <div><label for="trajectories" data-text="labels.trajectories"></label><input id="trajectories" type="number" value="20" min="1"></div>
+    <div><label for="tolerance" data-text="labels.tolerance"></label><input id="tolerance" type="number" value="0" min="0" max="100" step="0.5"></div>
+    <div><label for="intervening" data-text="labels.intervening"></label>
+      <select id="intervening"><option value="passive" data-text="options.passive"></option><option value="reinforce" data-text="options.reinforce"></option></select></div>
+    <div><button id="plan" data-text="buttons.plan"></button> <button id="explain" class="secondary" data-text="buttons.explain"></button></div>
+  </div>
+  <div id="plans"></div>
+  <pre id="planOut"></pre>
+</section>
+
+<section>
+  <h2 data-text="sections.execute"></h2>
+  <div class="row">
+    <div><label for="others" data-text="labels.others"></label>
+      <select id="others"><option value="idle" data-text="options.idle"></option><option value="fast" data-text="options.fast"></option></select></div>
+    <div><label for="mode" data-text="labels.mode"></label>
+      <select id="mode"><option value="manual" data-text="options.manual"></option><option value="auto-approve" data-text="options.autoApprove"></option><option value="auto-reject" data-text="options.autoReject"></option></select></div>
+    <div><button id="start" data-text="buttons.start"></button></div>
+  </div>
+  <div class="row">
+    <button id="sendOrders" class="secondary" data-text="buttons.sendOrders"></button>
+    <button id="approve" data-text="buttons.approve"></button>
+    <button id="reject" class="secondary" data-text="buttons.reject"></button>
+    <button id="status" class="secondary" data-text="buttons.status"></button>
+    <button id="report" class="secondary" data-text="buttons.report"></button>
+    <button id="stop" class="secondary" data-text="buttons.stop"></button>
+    <label><input id="autoStatus" type="checkbox" checked style="width:auto"> <span data-text="labels.status"></span></label>
+  </div>
+  <pre id="pending"></pre>
+  <pre id="executeOut"></pre>
+</section>
+
+<section>
+  <h2 data-text="sections.doctrine"></h2>
+  <div class="row">
+    <div><label for="doctrineFile" data-text="labels.doctrineFile"></label><input id="doctrineFile"></div>
+    <div><label for="doctrineTitle" data-text="labels.doctrineTitle"></label><input id="doctrineTitle" value="Operation Paris"></div>
+  </div>
+  <div class="row">
+    <button id="doctrineList" class="secondary" data-text="buttons.doctrineList"></button>
+    <button id="doctrineAdd" data-text="buttons.doctrineAdd"></button>
+    <button id="doctrineReconcile" class="secondary" data-text="buttons.doctrineReconcile"></button>
+  </div>
+  <pre id="doctrineOut"></pre>
+</section>
+
+<footer data-text="footer"></footer>
+<script src="/ui/text.js"></script>
+<script src="/ui/app.js"></script>
+</body>
+</html>
