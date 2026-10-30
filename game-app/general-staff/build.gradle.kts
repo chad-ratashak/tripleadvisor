@@ -10,6 +10,8 @@ application {
 dependencies {
     implementation(project(":game-core"))
     implementation(project(":java-extras"))
+    // IDelegateBridge.sendMessage names WebSocketMessage, which lives in :lobby-client-data.
+    implementation(project(":lobby-client-data"))
 
     testImplementation(testFixtures(project(":game-core")))
 }

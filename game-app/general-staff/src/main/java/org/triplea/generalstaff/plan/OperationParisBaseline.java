@@ -1,7 +1,6 @@
 package org.triplea.generalstaff.plan;
 
 import games.strategy.engine.data.GameData;
-import games.strategy.engine.data.GameMap;
 import games.strategy.engine.data.GamePlayer;
 import games.strategy.engine.data.Territory;
 import games.strategy.engine.data.Unit;
@@ -11,7 +10,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Random;
-import java.util.function.Predicate;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.triplea.generalstaff.observe.GameObservation.UnitCount;
@@ -77,9 +75,10 @@ public final class OperationParisBaseline {
   /** Runs every scenario {@code runs} times. */
   public OperationParisReport run(final int runs) {
     final Collection<Unit> garrison = List.copyOf(target.getUnits());
-    final Collection<Unit> attackerAir = airStrikeForce(attacker);
-    final Collection<Unit> attackerForce = concat(landStrikeForce(attacker), attackerAir);
-    final Collection<Unit> allyForce = concat(landStrikeForce(ally), airStrikeForce(ally));
+    final Collection<Unit> attackerAir = ForceSelection.airStrikeForce(data, attacker, target);
+    final Collection<Unit> attackerForce =
+        concat(ForceSelection.landStrikeForce(data, attacker, target), attackerAir);
+    final Collection<Unit> allyForce = ForceSelection.strikeForce(data, ally, target);
     try (BattleOddsService odds = new BattleOddsService(data)) {
       final BattleEstimate fullAttack =
           odds.estimate(
@@ -182,36 +181,6 @@ public final class OperationParisBaseline {
         Proportion.of(walkIns, runs),
         Proportion.of(unresolved, runs),
         conditionals);
-  }
-
-  /** Land units of {@code power} next to the target that may move during combat movement. */
-  private Collection<Unit> landStrikeForce(final GamePlayer power) {
-    final Predicate<Unit> eligible =
-        Matches.unitIsOwnedBy(power)
-            .and(Matches.unitIsLand())
-            .and(Matches.unitIsNotInfrastructure())
-            .and(Matches.unitCanNotMoveDuringCombatMove().negate());
-    return data.getMap().getNeighbors(target).stream()
-        .filter(neighbor -> !neighbor.isWater() && power.equals(neighbor.getOwner()))
-        .flatMap(neighbor -> neighbor.getMatches(eligible).stream())
-        .toList();
-  }
-
-  /** Aircraft of {@code power} that can reach the target and still fly back. */
-  private Collection<Unit> airStrikeForce(final GamePlayer power) {
-    final GameMap map = data.getMap();
-    final Predicate<Unit> eligible = Matches.unitIsOwnedBy(power).and(Matches.unitIsAir());
-    final List<Unit> aircraft = new ArrayList<>();
-    for (final Territory origin : map.getTerritories()) {
-      final int distance = map.getDistance(origin, target);
-      if (distance < 0) {
-        continue;
-      }
-      origin.getMatches(eligible).stream()
-          .filter(unit -> unit.getUnitAttachment().getMovement(power) >= 2 * distance)
-          .forEach(aircraft::add);
-    }
-    return aircraft;
   }
 
   /** Units that exist only for a calculation and are never registered in the live game data. */

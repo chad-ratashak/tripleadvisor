@@ -1,0 +1,537 @@
+{
+  "gameName": "Minimap",
+  "round": 1,
+  "step": "gameInitDelegate",
+  "stepPlayer": null,
+  "rules": {
+    "lowLuck": false,
+    "nationalObjectives": false,
+    "usePolitics": false,
+    "ww2v3": false,
+    "attackerRetreatPlanes": false,
+    "partialAmphibiousRetreat": false,
+    "captureUnitsOnEnteringTerritory": false,
+    "unitsCanBeDestroyedInsteadOfCaptured": false,
+    "triggeredVictory": false,
+    "chooseAaCasualties": false
+  },
+  "players": [
+    {
+      "name": "Russians",
+      "pus": 24,
+      "territoryProduction": 31,
+      "capitals": [
+        "red capitol"
+      ],
+      "objectives": []
+    },
+    {
+      "name": "Italians",
+      "pus": 44,
+      "territoryProduction": 31,
+      "capitals": [
+        "blue capitol"
+      ],
+      "objectives": []
+    }
+  ],
+  "relationships": [
+    {
+      "player": "Russians",
+      "other": "Italians",
+      "type": "default_war_relation",
+      "atWar": true,
+      "allied": false
+    }
+  ],
+  "territories": [
+    {
+      "name": "blue capitol",
+      "owner": "Italians",
+      "water": false,
+      "production": 10,
+      "capitalOf": "Italians",
+      "victoryCity": 1,
+      "neighbors": [
+        "blue middle 1",
+        "blue north 1",
+        "blue south 1",
+        "neutral territory 2"
+      ],
+      "units": [
+        {
+          "owner": "Italians",
+          "type": "aaGun",
+          "count": 1
+        },
+        {
+          "owner": "Italians",
+          "type": "armour",
+          "count": 3
+        },
+        {
+          "owner": "Italians",
+          "type": "artillery",
+          "count": 3
+        },
+        {
+          "owner": "Italians",
+          "type": "bomber",
+          "count": 1
+        },
+        {
+          "owner": "Italians",
+          "type": "factory",
+          "count": 1
+        },
+        {
+          "owner": "Italians",
+          "type": "fighter",
+          "count": 2
+        },
+        {
+          "owner": "Italians",
+          "type": "infantry",
+          "count": 7
+        }
+      ]
+    },
+    {
+      "name": "blue middle 1",
+      "owner": "Italians",
+      "water": false,
+      "production": 5,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "blue capitol",
+        "blue middle 2",
+        "blue north 1",
+        "blue south 1",
+        "sea zone 2",
+        "sea zone 4"
+      ],
+      "units": [
+        {
+          "owner": "Italians",
+          "type": "artillery",
+          "count": 1
+        },
+        {
+          "owner": "Italians",
+          "type": "infantry",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "blue middle 2",
+      "owner": "Italians",
+      "water": false,
+      "production": 2,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "blue middle 1",
+        "red middle 2",
+        "sea zone 2",
+        "sea zone 4"
+      ],
+      "units": [
+        {
+          "owner": "Italians",
+          "type": "infantry",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "blue north 1",
+      "owner": "Italians",
+      "water": false,
+      "production": 5,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "blue capitol",
+        "blue middle 1",
+        "blue north 2",
+        "neutral territory 2",
+        "sea zone 2"
+      ],
+      "units": [
+        {
+          "owner": "Italians",
+          "type": "artillery",
+          "count": 1
+        },
+        {
+          "owner": "Italians",
+          "type": "infantry",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "blue north 2",
+      "owner": "Italians",
+      "water": false,
+      "production": 2,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "blue north 1",
+        "neutral territory 2",
+        "red north 2",
+        "sea zone 2"
+      ],
+      "units": [
+        {
+          "owner": "Italians",
+          "type": "infantry",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "blue south 1",
+      "owner": "Italians",
+      "water": false,
+      "production": 5,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "blue capitol",
+        "blue middle 1",
+        "blue south 2",
+        "neutral territory 2",
+        "sea zone 4"
+      ],
+      "units": [
+        {
+          "owner": "Italians",
+          "type": "artillery",
+          "count": 1
+        },
+        {
+          "owner": "Italians",
+          "type": "infantry",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "blue south 2",
+      "owner": "Italians",
+      "water": false,
+      "production": 2,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "blue south 1",
+        "neutral territory 2",
+        "red south 2",
+        "sea zone 4"
+      ],
+      "units": [
+        {
+          "owner": "Italians",
+          "type": "infantry",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "neutral territory 1",
+      "owner": null,
+      "water": false,
+      "production": 0,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "red capitol",
+        "red north 1",
+        "red north 2",
+        "red south 1",
+        "red south 2"
+      ],
+      "units": []
+    },
+    {
+      "name": "neutral territory 2",
+      "owner": null,
+      "water": false,
+      "production": 0,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "blue capitol",
+        "blue north 1",
+        "blue north 2",
+        "blue south 1",
+        "blue south 2"
+      ],
+      "units": []
+    },
+    {
+      "name": "red capitol",
+      "owner": "Russians",
+      "water": false,
+      "production": 10,
+      "capitalOf": "Russians",
+      "victoryCity": 1,
+      "neighbors": [
+        "neutral territory 1",
+        "red middle 1",
+        "red north 1",
+        "red south 1"
+      ],
+      "units": [
+        {
+          "owner": "Russians",
+          "type": "aaGun",
+          "count": 1
+        },
+        {
+          "owner": "Russians",
+          "type": "armour",
+          "count": 3
+        },
+        {
+          "owner": "Russians",
+          "type": "artillery",
+          "count": 3
+        },
+        {
+          "owner": "Russians",
+          "type": "bomber",
+          "count": 1
+        },
+        {
+          "owner": "Russians",
+          "type": "factory",
+          "count": 1
+        },
+        {
+          "owner": "Russians",
+          "type": "fighter",
+          "count": 2
+        },
+        {
+          "owner": "Russians",
+          "type": "infantry",
+          "count": 7
+        }
+      ]
+    },
+    {
+      "name": "red middle 1",
+      "owner": "Russians",
+      "water": false,
+      "production": 5,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "red capitol",
+        "red middle 2",
+        "red north 1",
+        "red south 1",
+        "sea zone 1",
+        "sea zone 3"
+      ],
+      "units": [
+        {
+          "owner": "Russians",
+          "type": "artillery",
+          "count": 1
+        },
+        {
+          "owner": "Russians",
+          "type": "infantry",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "red middle 2",
+      "owner": "Russians",
+      "water": false,
+      "production": 2,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "blue middle 2",
+        "red middle 1",
+        "sea zone 1",
+        "sea zone 3"
+      ],
+      "units": [
+        {
+          "owner": "Russians",
+          "type": "infantry",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "red north 1",
+      "owner": "Russians",
+      "water": false,
+      "production": 5,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "neutral territory 1",
+        "red capitol",
+        "red middle 1",
+        "red north 2",
+        "sea zone 1"
+      ],
+      "units": [
+        {
+          "owner": "Russians",
+          "type": "artillery",
+          "count": 1
+        },
+        {
+          "owner": "Russians",
+          "type": "infantry",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "red north 2",
+      "owner": "Russians",
+      "water": false,
+      "production": 2,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "blue north 2",
+        "neutral territory 1",
+        "red north 1",
+        "sea zone 1"
+      ],
+      "units": [
+        {
+          "owner": "Russians",
+          "type": "infantry",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "red south 1",
+      "owner": "Russians",
+      "water": false,
+      "production": 5,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "neutral territory 1",
+        "red capitol",
+        "red middle 1",
+        "red south 2",
+        "sea zone 3"
+      ],
+      "units": [
+        {
+          "owner": "Russians",
+          "type": "artillery",
+          "count": 1
+        },
+        {
+          "owner": "Russians",
+          "type": "infantry",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "red south 2",
+      "owner": "Russians",
+      "water": false,
+      "production": 2,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "blue south 2",
+        "neutral territory 1",
+        "red south 1",
+        "sea zone 3"
+      ],
+      "units": [
+        {
+          "owner": "Russians",
+          "type": "infantry",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "sea zone 1",
+      "owner": null,
+      "water": true,
+      "production": 0,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "red middle 1",
+        "red middle 2",
+        "red north 1",
+        "red north 2",
+        "sea zone 2"
+      ],
+      "units": []
+    },
+    {
+      "name": "sea zone 2",
+      "owner": null,
+      "water": true,
+      "production": 0,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "blue middle 1",
+        "blue middle 2",
+        "blue north 1",
+        "blue north 2",
+        "sea zone 1"
+      ],
+      "units": []
+    },
+    {
+      "name": "sea zone 3",
+      "owner": null,
+      "water": true,
+      "production": 0,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "red middle 1",
+        "red middle 2",
+        "red south 1",
+        "red south 2",
+        "sea zone 4"
+      ],
+      "units": []
+    },
+    {
+      "name": "sea zone 4",
+      "owner": null,
+      "water": true,
+      "production": 0,
+      "capitalOf": null,
+      "victoryCity": 0,
+      "neighbors": [
+        "blue middle 1",
+        "blue middle 2",
+        "blue south 1",
+        "blue south 2",
+        "sea zone 3"
+      ],
+      "units": []
+    }
+  ]
+}

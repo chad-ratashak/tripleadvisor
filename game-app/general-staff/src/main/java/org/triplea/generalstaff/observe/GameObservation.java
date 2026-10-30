@@ -39,10 +39,12 @@ public record GameObservation(
       List<Objective> objectives) {}
 
   /**
-   * A national objective as the map defines it. Whether it is currently met is not evaluated here:
-   * the engine evaluates objectives through a delegate bridge during the end-turn step.
+   * A national objective as the map defines it, and whether its conditions hold in this position.
+   * {@code satisfied} is evaluated with the engine's own condition code through a read-only bridge;
+   * it says nothing about whether the objective has uses left.
    */
-  public record Objective(String name, int value, int uses, int eachMultiple) {}
+  public record Objective(
+      String name, int value, int uses, int eachMultiple, @Nullable Boolean satisfied) {}
 
   /** The diplomatic state between two powers. */
   public record Relationship(

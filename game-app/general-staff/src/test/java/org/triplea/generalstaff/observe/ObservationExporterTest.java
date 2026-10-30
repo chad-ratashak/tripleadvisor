@@ -83,6 +83,29 @@ class ObservationExporterTest {
   }
 
   @Test
+  void evaluatesObjectivesWithTheEnginesOwnConditionCode() {
+    final GameObservation observation = exporter.export(data, List.of("France"));
+
+    final List<GameObservation.Objective> german = player(observation, "Germans").objectives();
+    assertThat(objective(german, "objectiveAttachment_Germans_1_Trade_with_Russia").satisfied())
+        .as("Germany is not at war with Russia at the start")
+        .isTrue();
+    assertThat(objective(german, "objectiveAttachment_Germans_3_Control_Caucasus").satisfied())
+        .as("the Caucasus is Russian at the start")
+        .isFalse();
+    assertThat(objective(german, "objectiveAttachment_Germans_1_Trade_with_Russia").value())
+        .isEqualTo(5);
+  }
+
+  private static GameObservation.Objective objective(
+      final List<GameObservation.Objective> objectives, final String name) {
+    return objectives.stream()
+        .filter(objective -> objective.name().equals(name))
+        .findFirst()
+        .orElseThrow();
+  }
+
+  @Test
   void axisPowersStartAtWarWithFranceButNotRussia() {
     final GameObservation observation = exporter.export(data, List.of("France"));
 

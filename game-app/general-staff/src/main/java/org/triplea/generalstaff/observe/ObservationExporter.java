@@ -12,12 +12,16 @@ import games.strategy.engine.data.Territory;
 import games.strategy.engine.data.properties.GameProperties;
 import games.strategy.triplea.Constants;
 import games.strategy.triplea.Properties;
+import games.strategy.triplea.attachments.AbstractConditionsAttachment;
+import games.strategy.triplea.attachments.ICondition;
 import games.strategy.triplea.attachments.RulesAttachment;
 import games.strategy.triplea.attachments.TerritoryAttachment;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -26,6 +30,7 @@ import org.triplea.generalstaff.observe.GameObservation.PlayerSummary;
 import org.triplea.generalstaff.observe.GameObservation.Relationship;
 import org.triplea.generalstaff.observe.GameObservation.RuleFlags;
 import org.triplea.generalstaff.observe.GameObservation.TerritorySummary;
+import org.triplea.generalstaff.sim.StaffDelegateBridge;
 
 /**
  * Reads a game position into a {@link GameObservation}. Read-only: it holds the game data's read
@@ -124,7 +129,7 @@ public final class ObservationExporter {
               pus.map(resource -> player.getResources().getQuantity(resource)).orElse(0),
               production,
               capitalsOf(player, territories),
-              objectivesOf(player)));
+              objectivesOf(data, player)));
     }
     return summaries;
   }
@@ -142,15 +147,27 @@ public final class ObservationExporter {
         .toList();
   }
 
-  private static List<Objective> objectivesOf(final GamePlayer player) {
-    return RulesAttachment.getNationalObjectives(player).stream()
+  private static List<Objective> objectivesOf(final GameData data, final GamePlayer player) {
+    final Set<RulesAttachment> objectives = RulesAttachment.getNationalObjectives(player);
+    if (objectives.isEmpty()) {
+      return List.of();
+    }
+    // The engine's own condition evaluation, through a bridge that refuses to change the game.
+    final Map<ICondition, Boolean> tested =
+        AbstractConditionsAttachment.testAllConditionsRecursive(
+            AbstractConditionsAttachment.getAllConditionsRecursive(
+                new HashSet<ICondition>(objectives), null),
+            null,
+            StaffDelegateBridge.readOnly(data, player));
+    return objectives.stream()
         .map(
             rule ->
                 new Objective(
                     rule.getName(),
                     rule.getObjectiveValue(),
                     rule.getUses(),
-                    rule.getEachMultiple()))
+                    rule.getEachMultiple(),
+                    tested.get(rule)))
         .sorted(Comparator.comparing(Objective::name))
         .toList();
   }
