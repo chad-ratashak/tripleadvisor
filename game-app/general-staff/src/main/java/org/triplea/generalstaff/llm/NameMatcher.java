@@ -5,10 +5,16 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
-/** Finds the game names closest to a name a model or a person wrote, for clarification hints. */
+/**
+ * Finds the game names closest to a name a model or a person wrote, for clarification hints. The
+ * test is deliberately strict: a shared start of four letters, containment of a name at least four
+ * letters long, or one edit in five on names of six letters or more. Short names that differ by a
+ * letter (Iran, Iraq) are different places and get no suggestion.
+ */
 final class NameMatcher {
-  private static final double MAX_RELATIVE_DISTANCE = 0.4;
+  private static final double MAX_RELATIVE_DISTANCE = 0.2;
   private static final int MIN_SHARED_PREFIX = 4;
+  private static final int MIN_LENGTH_FOR_DISTANCE = 6;
 
   private NameMatcher() {}
 
@@ -29,8 +35,9 @@ final class NameMatcher {
 
   private static boolean isClose(final String wanted, final String candidate) {
     return sharedPrefix(wanted, candidate) >= MIN_SHARED_PREFIX
-        || candidate.contains(wanted)
-        || relativeDistance(wanted, candidate) <= MAX_RELATIVE_DISTANCE;
+        || (wanted.length() >= MIN_SHARED_PREFIX && candidate.contains(wanted))
+        || (Math.max(wanted.length(), candidate.length()) >= MIN_LENGTH_FOR_DISTANCE
+            && relativeDistance(wanted, candidate) <= MAX_RELATIVE_DISTANCE);
   }
 
   private static int sharedPrefix(final String a, final String b) {

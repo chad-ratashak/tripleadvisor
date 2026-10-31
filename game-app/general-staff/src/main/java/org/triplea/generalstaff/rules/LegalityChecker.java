@@ -108,32 +108,40 @@ public final class LegalityChecker implements MoveJudge {
   }
 
   /**
-   * Finds the cheapest passable route from {@code from} to {@code to} for the units with the map's
-   * own route finder, then validates it. No route at all is reported as an illegal move.
+   * Finds routes from {@code from} to {@code to} for the units (friendliest first), validates them
+   * and returns the first legal verdict, else the last refusal. No route at all is an illegal move.
    */
   public MoveVerdict check(final Collection<Unit> units, final Territory from, final Territory to) {
     final List<Unit> copyUnits = translateUnits(units);
-    final Optional<Route> route =
-        copy.getMap()
-            .getRouteForUnits(
-                territory(from),
-                territory(to),
-                Matches.territoryIsNotImpassable(),
-                copyUnits,
-                player);
-    return route
-        .map(found -> check(copyUnits, found))
-        .orElseGet(
-            () ->
-                new MoveVerdict(
-                    step.getName(),
-                    nonCombat,
-                    player.getName(),
-                    UnitCounts.of(copyUnits),
-                    List.of(from.getName(), to.getName()),
-                    false,
-                    "No route from " + from.getName() + " to " + to.getName(),
-                    List.of()));
+    final List<Route> routes =
+        Routes.candidates(
+            copy,
+            territory(from),
+            territory(to),
+            Matches.territoryIsNotImpassable(),
+            copyUnits,
+            player);
+    MoveVerdict verdict = null;
+    for (final Route route : routes) {
+      verdict = check(copyUnits, route);
+      if (verdict.legal()) {
+        return verdict;
+      }
+    }
+    if (verdict != null) {
+      return verdict;
+    }
+    final String reason = "No route from " + from.getName() + " to " + to.getName();
+    return new MoveVerdict(
+        step.getName(),
+        nonCombat,
+        player.getName(),
+        UnitCounts.of(copyUnits),
+        List.of(from.getName(), to.getName()),
+        false,
+        reason,
+        List.of(),
+        reason);
   }
 
   /**
@@ -170,7 +178,8 @@ public final class LegalityChecker implements MoveJudge {
         route.getAllTerritories().stream().map(Territory::getName).toList(),
         legal,
         result.hasError() ? result.getError() : null,
-        warnings);
+        warnings,
+        result.hasError() ? result.getError() : warnings.isEmpty() ? null : warnings.get(0));
   }
 
   private static GameStep findStep(final GameData data, final String stepName) {

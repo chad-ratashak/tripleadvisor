@@ -23,6 +23,12 @@ public final class ApprovalGate {
   /** What the engine is waiting on. */
   public record Pending(String step, String player, List<PlannedOrder> proposed, Instant since) {}
 
+  /**
+   * What the operator was looking at when deciding: the step, and when known the time the proposal
+   * was made, so an answer to an older proposal with the same step name is refused too.
+   */
+  public record Shown(String step, @Nullable Instant since) {}
+
   /** The operator's answer. */
   public record Decision(
       String step, boolean approved, List<PlannedOrder> orders, String decidedBy, Instant at) {}
@@ -141,6 +147,50 @@ public final class ApprovalGate {
     synchronized (lock) {
       return decide(false, List.of(), decidedBy);
     }
+  }
+
+  /** Approves as proposed, but only if the engine is waiting on {@code step}. */
+  public boolean approve(final String step, final String decidedBy) {
+    return approve(new Shown(step, null), decidedBy);
+  }
+
+  /** Approves with edited orders, but only if the engine is waiting on {@code step}. */
+  public boolean approve(
+      final String step, final List<PlannedOrder> orders, final String decidedBy) {
+    return approve(new Shown(step, null), orders, decidedBy);
+  }
+
+  /** Rejects, but only if the engine is waiting on {@code step}. */
+  public boolean reject(final String step, final String decidedBy) {
+    return reject(new Shown(step, null), decidedBy);
+  }
+
+  /** Approves as proposed, but only if the engine is still waiting on what the operator saw. */
+  public boolean approve(final Shown shown, final String decidedBy) {
+    synchronized (lock) {
+      return matches(shown) && decide(true, pending.proposed(), decidedBy);
+    }
+  }
+
+  /** Approves with edited orders, but only if the engine is still waiting on what was shown. */
+  public boolean approve(
+      final Shown shown, final List<PlannedOrder> orders, final String decidedBy) {
+    synchronized (lock) {
+      return matches(shown) && decide(true, orders, decidedBy);
+    }
+  }
+
+  /** Rejects, but only if the engine is still waiting on what the operator saw. */
+  public boolean reject(final Shown shown, final String decidedBy) {
+    synchronized (lock) {
+      return matches(shown) && decide(false, List.of(), decidedBy);
+    }
+  }
+
+  private boolean matches(final Shown shown) {
+    return pending != null
+        && pending.step().equals(shown.step())
+        && (shown.since() == null || shown.since().equals(pending.since()));
   }
 
   /** Lets a blocked engine thread go (as a rejection); used when the host shuts down. */

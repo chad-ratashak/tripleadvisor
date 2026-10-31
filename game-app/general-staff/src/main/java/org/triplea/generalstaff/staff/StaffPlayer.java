@@ -14,6 +14,8 @@ import games.strategy.triplea.ai.AbstractAi;
 import games.strategy.triplea.ai.fast.FastAi;
 import games.strategy.triplea.delegate.Matches;
 import games.strategy.triplea.delegate.battle.IBattle;
+import games.strategy.triplea.delegate.data.MoveValidationResult;
+import games.strategy.triplea.delegate.move.validation.MoveValidator;
 import games.strategy.triplea.delegate.remote.IAbstractPlaceDelegate;
 import games.strategy.triplea.delegate.remote.IMoveDelegate;
 import games.strategy.triplea.delegate.remote.IPurchaseDelegate;
@@ -23,6 +25,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,13 +33,20 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import javax.annotation.Nullable;
+import org.triplea.generalstaff.rules.LegalityChecker;
+import org.triplea.generalstaff.rules.MoveJudge;
+import org.triplea.generalstaff.rules.MoveVerdict;
+import org.triplea.generalstaff.sim.LandingPolicy;
+import org.triplea.generalstaff.sim.TurnSimulator.Order;
 import org.triplea.java.collections.CollectionUtils;
 
 /**
  * The General Staff as a player in a hosted game. Each movement step, it proposes the orders it
  * holds for that step to the {@link ApprovalGate}, blocks the engine until the operator decides,
  * saves the game, and then performs the approved orders through the real move delegate, recording
- * the engine's answer to each. It buys nothing, researches nothing and places nothing on its own.
+ * the engine's answer to each. At a non-combat move it also proposes landing orders for every
+ * aircraft the engine says cannot stay where it is, so survivors come home instead of being
+ * removed. It buys nothing, researches nothing and places nothing on its own.
  */
 public final class StaffPlayer extends AbstractAi {
   public static final String LABEL = "General Staff";
@@ -99,7 +109,11 @@ public final class StaffPlayer extends AbstractAi {
       final GamePlayer player) {
     final String step = getPlayerBridge().getStepName();
     final PlannedStep planned = orders.getOrDefault(step, PlannedStep.none(step));
-    final ApprovalGate.Decision decision = gate.await(step, player.getName(), planned.orders());
+    final List<PlannedOrder> proposed = new ArrayList<>(planned.orders());
+    if (nonCombat) {
+      proposed.addAll(landingProposals(step, moveDel, data, player));
+    }
+    final ApprovalGate.Decision decision = gate.await(step, player.getName(), proposed);
     if (!decision.approved()) {
       records.add(
           new ExecutionRecord(
@@ -148,6 +162,66 @@ public final class StaffPlayer extends AbstractAi {
           new ExecutionRecord(
               getName(), step, null, e.toString(), "delegation failed", Instant.now()));
     }
+  }
+
+  /**
+   * Orders that bring home the aircraft the engine says cannot stay where they are, grouped by
+   * route and type so the operator reads them like any other order. Each one has passed the
+   * engine's validator against the live game.
+   */
+  private static List<PlannedOrder> landingProposals(
+      final String step,
+      final IMoveDelegate moveDel,
+      final GameData data,
+      final GamePlayer player) {
+    final Collection<Territory> stranded = moveDel.getTerritoriesWhereAirCantLand(player);
+    if (stranded.isEmpty()) {
+      return List.of();
+    }
+    final MoveJudge judge =
+        new MoveJudge() {
+          @Override
+          public GameData gameCopy() {
+            return data;
+          }
+
+          @Override
+          public GamePlayer player() {
+            return player;
+          }
+
+          @Override
+          public String stepName() {
+            return step;
+          }
+
+          @Override
+          public boolean isNonCombatMove() {
+            return true;
+          }
+
+          @Override
+          public MoveVerdict check(final Collection<Unit> units, final Route route) {
+            final MoveValidationResult result =
+                new MoveValidator(data, true)
+                    .validateMove(
+                        new MoveDescription(units, route), player, moveDel.getMovesMade());
+            return LegalityChecker.verdict(step, true, player, List.copyOf(units), route, result);
+          }
+        };
+    final Map<String, PlannedOrder> grouped = new LinkedHashMap<>();
+    for (final Order order : LandingPolicy.orders(data, player, stranded, judge)) {
+      final List<String> route =
+          order.route().getAllTerritories().stream().map(Territory::getName).toList();
+      for (final Unit unit : order.units()) {
+        final String type = unit.getType().getName();
+        grouped.merge(
+            route + "|" + type,
+            new PlannedOrder(route, type, 1),
+            (a, b) -> new PlannedOrder(a.route(), a.unitType(), a.count() + b.count()));
+      }
+    }
+    return List.copyOf(grouped.values());
   }
 
   private static Optional<String> perform(
@@ -214,7 +288,12 @@ public final class StaffPlayer extends AbstractAi {
         || possibleTerritories.isEmpty()) {
       return Optional.empty();
     }
-    final IBattle battle = getGameData().getBattleDelegate().getCurrentBattle();
+    // A lone battle is fought by the tracker itself, so the delegate's "current battle" stays
+    // empty; the id the engine passes finds it either way.
+    final IBattle byId =
+        getGameData().getBattleDelegate().getBattleTracker().getPendingBattle(battleId);
+    final IBattle battle =
+        byId != null ? byId : getGameData().getBattleDelegate().getCurrentBattle();
     if (battle != null && battle.getBattleRound() >= retreatAfterRound) {
       return Optional.of(CollectionUtils.getAny(possibleTerritories));
     }

@@ -171,4 +171,26 @@ class LegalityCheckerTest {
     assertThat(territory).as(name).isNotNull();
     return territory;
   }
+
+  @Test
+  void prefersAFriendlyRouteWhenTheShortestOneRunsThroughEnemyGround() {
+    final LegalityChecker checker = LegalityChecker.forStep(data, "germansCombatMove", 1L);
+
+    // Greater Southern Germany to Romania is two steps either through Slovakia Hungary (German)
+    // or through Yugoslavia (neutral, enemy-held); only the first is a legal move for armour.
+    final MoveVerdict verdict =
+        checker.check(
+            units("Greater Southern Germany", "armour", 1),
+            territory("Greater Southern Germany"),
+            territory("Romania"));
+
+    assertThat(verdict.legal()).as(verdict.reason()).isTrue();
+    assertThat(verdict.route())
+        .containsExactly("Greater Southern Germany", "Slovakia Hungary", "Romania");
+    assertThat(verdict.reason()).isNull();
+
+    final MoveVerdict tooFar =
+        checker.check(units("Germany", "infantry", 1), territory("Germany"), territory("France"));
+    assertThat(tooFar.reason()).isEqualTo(tooFar.warnings().get(0));
+  }
 }

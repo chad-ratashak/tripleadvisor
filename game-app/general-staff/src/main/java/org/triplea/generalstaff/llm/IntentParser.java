@@ -105,11 +105,15 @@ public final class IntentParser {
               + capitalHint(observation, namedPlayers)
               + suggestion(unknown, territories));
     }
+    if (directive.actingPlayer().isBlank()) {
+      clarifications.add(LlmText.MISSING_ACTING_PLAYER);
+    }
     final boolean valid =
         unknownPlayers.isEmpty()
             && unknownTerritories.isEmpty()
             && directive.clarificationQuestions().isEmpty()
-            && !directive.objective().isBlank();
+            && !directive.objective().isBlank()
+            && !directive.actingPlayer().isBlank();
     return new ParsedDirective(
         directive,
         valid,
@@ -195,9 +199,13 @@ public final class IntentParser {
             .map(territory -> territory.name() + " (" + territory.capitalOf() + ")")
             .sorted()
             .toList();
-    return capitals.isEmpty()
-        ? ""
-        : String.format(Locale.ROOT, LlmText.CAPITAL_HINT, String.join(", ", capitals));
+    if (capitals.isEmpty()) {
+      return "";
+    }
+    return String.format(
+        Locale.ROOT,
+        namedPlayers.isEmpty() ? LlmText.CAPITAL_HINT : LlmText.CAPITAL_HINT_NAMED,
+        String.join(", ", capitals));
   }
 
   private static List<String> sorted(final Set<String> names) {

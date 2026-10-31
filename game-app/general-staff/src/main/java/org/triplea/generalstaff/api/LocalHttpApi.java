@@ -18,6 +18,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -151,18 +152,18 @@ public final class LocalHttpApi implements AutoCloseable {
               service.parseDirective(
                   game(body), string(body, "directive"), optionalString(body, "model")));
       case "/plan/paris" -> Optional.of(plan(body));
+      case "/validate-directive" ->
+          Optional.of(
+              service.validateDirective(
+                  game(body),
+                  jsonField(body, "parsed").toString(),
+                  optionalString(body, "source").orElse("external")));
       case "/execute/start" -> Optional.of(executeStart(body));
+      case "/execute/run" -> Optional.of(executeRun(body));
       case "/execute/orders" -> Optional.of(executeOrders(body));
       case "/execute/status" -> Optional.of(service.execution().status());
       case "/execute/approve" -> Optional.of(executeApprove(body));
-      case "/execute/reject" ->
-          Optional.of(
-              Map.of(
-                  "rejected",
-                  service
-                      .execution()
-                      .gate()
-                      .reject(optionalString(body, "by").orElse("operator"))));
+      case "/execute/reject" -> Optional.of(executeReject(body));
       case "/execute/report" -> Optional.of(service.execution().report());
       case "/execute/stop" -> Optional.of(executeStop());
       case "/doctrine/list" -> Optional.of(doctrineList(body));
@@ -212,7 +213,11 @@ public final class LocalHttpApi implements AutoCloseable {
             body.has("tolerance") && !body.get("tolerance").isJsonNull()
                 ? body.get("tolerance").getAsDouble()
                 : 0.0,
-            optionalString(body, "intervening").orElse("passive"));
+            optionalString(body, "intervening").orElse("passive"),
+            optionalString(body, "attacker").orElse("Germans"),
+            optionalString(body, "ally").orElse("Italians"),
+            optionalString(body, "defender").orElse("French"),
+            optionalString(body, "target").orElse("France"));
     if (body.has("explain") && body.get("explain").getAsBoolean()) {
       return Map.of(
           "report",
@@ -258,31 +263,106 @@ public final class LocalHttpApi implements AutoCloseable {
                         System.getProperty("java.io.tmpdir"),
                         "general-staff-host-" + System.currentTimeMillis()));
     final ExecutionSession session = service.startExecution(data, staff, others, gate, work);
+    if (body.has("steps") && !body.get("steps").isJsonNull()) {
+      session.setOrders(steps(body));
+    }
+    if (!body.has("run") || body.get("run").isJsonNull() || body.get("run").getAsBoolean()) {
+      session.runInBackground(integer(body, "lastRound", 1));
+    }
+    return session.status();
+  }
+
+  private Object executeRun(final JsonObject body) {
+    final ExecutionSession session = service.execution();
+    if (session.status().running()) {
+      throw new IllegalArgumentException(ApiText.ALREADY_RUNNING);
+    }
     session.runInBackground(integer(body, "lastRound", 1));
     return session.status();
   }
 
-  private Object executeOrders(final JsonObject body) {
-    final ExecutionSession session = service.execution();
+  private static List<PlannedStep> steps(final JsonObject body) {
     final List<PlannedStep> steps =
         GSON.fromJson(body.get("steps"), new TypeToken<List<PlannedStep>>() {}.getType());
     if (steps == null) {
       throw new IllegalArgumentException(
           String.format(Locale.ROOT, ApiText.MISSING_FIELD, "steps"));
     }
-    session.setOrders(steps);
+    return steps;
+  }
+
+  private Object executeOrders(final JsonObject body) {
+    final ExecutionSession session = service.execution();
+    session.setOrders(steps(body));
     return session.status();
   }
 
   private Object executeApprove(final JsonObject body) {
     final ApprovalGate gate = service.execution().gate();
     final String by = optionalString(body, "by").orElse("operator");
+    final Optional<ApprovalGate.Shown> shown = shown(body);
+    final boolean approved;
     if (body.has("orders") && !body.get("orders").isJsonNull()) {
       final List<PlannedOrder> orders =
           GSON.fromJson(body.get("orders"), new TypeToken<List<PlannedOrder>>() {}.getType());
-      return Map.of("approved", gate.approve(orders, by));
+      approved =
+          shown.isPresent() ? gate.approve(shown.get(), orders, by) : gate.approve(orders, by);
+    } else {
+      approved = shown.isPresent() ? gate.approve(shown.get(), by) : gate.approve(by);
     }
-    return Map.of("approved", gate.approve(by));
+    return decisionResult("approved", approved, gate, shown);
+  }
+
+  private Object executeReject(final JsonObject body) {
+    final ApprovalGate gate = service.execution().gate();
+    final String by = optionalString(body, "by").orElse("operator");
+    final Optional<ApprovalGate.Shown> shown = shown(body);
+    final boolean rejected = shown.isPresent() ? gate.reject(shown.get(), by) : gate.reject(by);
+    return decisionResult("rejected", rejected, gate, shown);
+  }
+
+  /** The proposal the caller says it answered: its step and, when given, its "since" time. */
+  private static Optional<ApprovalGate.Shown> shown(final JsonObject body) {
+    final Optional<String> step = optionalString(body, "step");
+    if (step.isEmpty()) {
+      return Optional.empty();
+    }
+    final Instant since;
+    try {
+      since = optionalString(body, "since").map(Instant::parse).orElse(null);
+    } catch (final java.time.format.DateTimeParseException e) {
+      throw new IllegalArgumentException(
+          String.format(Locale.ROOT, ApiText.BAD_SINCE, optionalString(body, "since").orElse("")));
+    }
+    return Optional.of(new ApprovalGate.Shown(step.get(), since));
+  }
+
+  /** The answer to a decision call; a refusal says what the engine is actually waiting on. */
+  private static Map<String, Object> decisionResult(
+      final String key,
+      final boolean done,
+      final ApprovalGate gate,
+      final Optional<ApprovalGate.Shown> shown) {
+    if (done) {
+      return Map.of(key, true);
+    }
+    final Optional<ApprovalGate.Pending> pending = gate.pending();
+    final String reason;
+    if (pending.isEmpty()) {
+      reason = ApiText.NOTHING_PENDING;
+    } else if (shown.isPresent() && pending.get().step().equals(shown.get().step())) {
+      reason =
+          String.format(
+              Locale.ROOT, ApiText.PROPOSAL_CHANGED, pending.get().step(), pending.get().since());
+    } else {
+      reason =
+          String.format(
+              Locale.ROOT,
+              ApiText.STEP_MISMATCH,
+              pending.get().step(),
+              shown.map(ApprovalGate.Shown::step).orElse("?"));
+    }
+    return Map.of(key, false, "reason", reason);
   }
 
   private Object doctrineList(final JsonObject body) {
@@ -370,6 +450,13 @@ public final class LocalHttpApi implements AutoCloseable {
     } catch (final JsonSyntaxException e) {
       throw new IllegalArgumentException(ApiText.BAD_JSON, e);
     }
+  }
+
+  private static JsonElement jsonField(final JsonObject body, final String field) {
+    if (!body.has(field) || body.get(field).isJsonNull()) {
+      throw new IllegalArgumentException(String.format(Locale.ROOT, ApiText.MISSING_FIELD, field));
+    }
+    return body.get(field);
   }
 
   private static String string(final JsonObject body, final String field) {

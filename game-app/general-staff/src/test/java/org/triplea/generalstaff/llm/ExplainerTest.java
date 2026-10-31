@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.triplea.generalstaff.llm.Explainer.Fact;
+import org.triplea.generalstaff.odds.Proportion;
+import org.triplea.generalstaff.plan.PlanReport;
 
 class ExplainerTest {
   private static final List<Fact> FACTS =
@@ -79,5 +81,57 @@ class ExplainerTest {
       final String text = BriefingFormatter.toText(briefing);
       assertThat(text).contains("Staff briefing").contains("Use the air.").contains("Weather.");
     }
+  }
+
+  @Test
+  void planFactsNameThePowersAndTheTargetOfTheReport() {
+    final PlanReport.OperationalPlan plan =
+        new PlanReport.OperationalPlan(
+            "strafe-3land-r1",
+            "strafe",
+            "a plan",
+            1,
+            true,
+            false,
+            1,
+            List.of(),
+            new PlanReport.Metrics(
+                6,
+                Proportion.of(0, 6),
+                Proportion.of(0, 6),
+                Proportion.of(0, 6),
+                Proportion.of(6, 6),
+                5.5,
+                0.0,
+                0.0,
+                3.0,
+                0.0,
+                1.0),
+            List.of(),
+            List.of(),
+            List.of());
+    final PlanReport report =
+        new PlanReport(
+            "game",
+            "Japanese",
+            "Italians",
+            "Chinese",
+            "Yunnan",
+            6,
+            List.of(),
+            1L,
+            0.0,
+            "passive",
+            List.of(plan),
+            List.of(),
+            List.of());
+
+    final List<Fact> facts = Explainer.facts(report);
+
+    assertThat(facts)
+        .extracting(Fact::description)
+        .anyMatch(text -> text.contains("Italians own Yunnan"))
+        .anyMatch(text -> text.contains("Japanese conquer Yunnan"))
+        .noneMatch(text -> text.contains("Italy owns France") || text.contains("German"));
   }
 }

@@ -99,9 +99,12 @@ class IntentParserTest {
     assertThat(parsed.clarifications().get(0))
         .contains("'Italy'")
         .contains("Did you mean 'Italians'");
+    // The hint lists the capitals of the powers the directive names, and says so.
     assertThat(parsed.clarifications().get(1))
         .contains("'Paris'")
+        .contains("Capitals of the powers the directive names")
         .contains("France (French)")
+        .doesNotContain("Capitals on this map")
         .doesNotContain("Germany (Germans)");
   }
 
@@ -150,5 +153,61 @@ class IntentParserTest {
                 .getAsJsonObject("risk_tolerance")
                 .getAsJsonArray("enum"))
         .hasSize(5);
+  }
+
+  @Test
+  void aDirectiveWithoutAnActingPowerAsksWhoActs() {
+    final StrategicDirective directive =
+        new StrategicDirective(
+            "Take France",
+            "",
+            List.of("France"),
+            "high",
+            List.of(),
+            List.of(),
+            "balanced",
+            1,
+            List.of(),
+            "none",
+            List.of(),
+            List.of("France"),
+            List.of());
+
+    final ParsedDirective parsed = IntentParser.validate(directive, observation, "test", 0L, "{}");
+
+    assertThat(parsed.valid()).isFalse();
+    assertThat(parsed.unknownPlayers()).isEmpty();
+    assertThat(parsed.clarifications()).singleElement().asString().contains("which power acts");
+  }
+
+  @Test
+  void withNoPowerNamedTheHintListsEveryCapitalOnTheMap() {
+    final StrategicDirective directive =
+        new StrategicDirective(
+            "Take Paris",
+            "",
+            List.of("Paris"),
+            "high",
+            List.of(),
+            List.of(),
+            "balanced",
+            1,
+            List.of(),
+            "none",
+            List.of(),
+            List.of("Paris"),
+            List.of());
+
+    final ParsedDirective parsed = IntentParser.validate(directive, observation, "test", 0L, "{}");
+
+    assertThat(parsed.valid()).isFalse();
+    assertThat(parsed.clarifications()).hasSize(2);
+    assertThat(parsed.clarifications().get(0))
+        .contains("Capitals on this map:")
+        .contains("France (French)")
+        .contains("Germany (Germans)")
+        .contains("Japan (Japanese)")
+        .doesNotContain("powers the directive names");
+    assertThat(parsed.clarifications().get(1)).contains("which power acts");
   }
 }

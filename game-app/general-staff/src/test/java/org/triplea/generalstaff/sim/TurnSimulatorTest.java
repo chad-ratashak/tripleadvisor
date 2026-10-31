@@ -8,6 +8,7 @@ import games.strategy.engine.data.Territory;
 import games.strategy.engine.data.Unit;
 import games.strategy.triplea.delegate.Matches;
 import games.strategy.triplea.xml.TestMapGameData;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -132,5 +133,57 @@ class TurnSimulatorTest {
             .toList();
     assertThat(units).as("%d %s in %s", count, type, territory.getName()).hasSize(count);
     return units;
+  }
+
+  @Test
+  void anAirOnlyStrikeRetreatsAfterTheGivenRoundToo() {
+    // A lone battle is fought by the battle tracker itself, bypassing the delegate's "current
+    // battle"; the retreat policy must still see the round, through the battle id the engine
+    // passes.
+    final Sandbox sandbox = Sandbox.fromBytes(start, 13L);
+    final TurnSimulator simulator = new TurnSimulator(sandbox);
+    final GamePlayer germans = sandbox.player("Germans");
+    final Territory france = sandbox.territory("France");
+    sandbox.policy("Germans").retreatAfterRound(1);
+    final List<Unit> aircraft = ForceSelection.airStrikeForce(sandbox.data(), germans, france);
+    assertThat(aircraft).hasSize(9);
+    final List<Order> orders = new ArrayList<>();
+    for (final Territory origin : sandbox.data().getMap().getTerritories()) {
+      final List<Unit> here = origin.getUnits().stream().filter(aircraft::contains).toList();
+      if (!here.isEmpty()) {
+        orders.add(
+            new Order(
+                here,
+                sandbox
+                    .data()
+                    .getMap()
+                    .getRouteForUnits(
+                        origin, france, Matches.territoryIsNotImpassable(), here, germans)
+                    .orElseThrow()));
+      }
+    }
+    assertThat(simulator.runStep("germansCombatMove", orders).orderErrors()).isEmpty();
+
+    final BattleOutcome outcome = simulator.runStep("germansBattle").battles().get(0);
+
+    assertThat(outcome.rounds()).isEqualTo(1);
+    assertThat(outcome.ownerAfter()).isEqualTo("French");
+    assertThat(outcome.defendersLeft()).isNotEmpty();
+    // An all-air attacker retreats in place: the engine leaves the survivors over the battle site,
+    // where they cannot stay, so the non-combat move must fly them home.
+    final List<Unit> overFrance = france.getMatches(Matches.unitIsOwnedBy(germans));
+    assertThat(overFrance).isNotEmpty().allMatch(Matches.unitIsAir());
+    sandbox.position("germansNonCombatMove");
+    final List<Order> landing = LandingPolicy.orders(sandbox.data(), germans, sandbox.judge());
+    assertThat(landing).hasSize(overFrance.size());
+    assertThat(simulator.runStep("germansNonCombatMove", landing).orderErrors()).isEmpty();
+    assertThat(france.getMatches(Matches.unitIsOwnedBy(germans))).isEmpty();
+    final long survivors =
+        sandbox.data().getMap().getTerritories().stream()
+            .filter(territory -> !territory.isWater())
+            .flatMap(territory -> territory.getUnits().stream())
+            .filter(unit -> overFrance.stream().anyMatch(a -> a.getId().equals(unit.getId())))
+            .count();
+    assertThat(survivors).isEqualTo(overFrance.size());
   }
 }

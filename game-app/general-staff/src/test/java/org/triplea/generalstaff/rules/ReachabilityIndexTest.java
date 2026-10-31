@@ -34,6 +34,7 @@ class ReachabilityIndexTest {
     assertThat(france.enemyOwned()).isTrue();
     assertThat(france.owner()).isEqualTo("French");
     assertThat(france.route()).containsExactly("Holland Belgium", "France");
+    assertThat(infantry.reason()).isNull();
 
     final ReachabilityReport germany = ReachabilityIndex.compute(checker, Optional.of("Germany"));
     assertThat(group(germany, "infantry").destinations())
@@ -43,8 +44,10 @@ class ReachabilityIndexTest {
         .extracting(Destination::territory)
         .contains("France");
     // Anti-aircraft guns can move, but not during combat movement: the group is listed with no
-    // legal destination, so a planner sees the unit and the engine's refusal in one place.
-    assertThat(group(germany, "aaGun").destinations()).isEmpty();
+    // legal destination and the engine's refusal, so a planner sees both in one place.
+    final UnitReach aaGuns = group(germany, "aaGun");
+    assertThat(aaGuns.destinations()).isEmpty();
+    assertThat(aaGuns.reason()).contains("AA guns");
   }
 
   @Test
@@ -69,6 +72,23 @@ class ReachabilityIndexTest {
     assertThat(report.groups())
         .extracting(UnitReach::origin)
         .contains("Holland Belgium", "Western Germany", "Germany");
+  }
+
+  @Test
+  void equalLengthFriendlyRoutesAreFoundWhenTheShortestRunsThroughEnemies() {
+    final GameData data = TestMapGameData.GLOBAL1940.getGameData();
+    final LegalityChecker checker = LegalityChecker.forStep(data, "germansCombatMove", 1L);
+
+    final ReachabilityReport report =
+        ReachabilityIndex.compute(checker, Optional.of("Greater Southern Germany"));
+
+    final Destination romania =
+        group(report, "armour").destinations().stream()
+            .filter(destination -> destination.territory().equals("Romania"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(romania.route())
+        .containsExactly("Greater Southern Germany", "Slovakia Hungary", "Romania");
   }
 
   private static UnitReach group(final ReachabilityReport report, final String type) {

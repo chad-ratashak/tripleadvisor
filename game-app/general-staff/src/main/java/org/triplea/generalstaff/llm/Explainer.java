@@ -141,22 +141,22 @@ public final class Explainer {
       facts.add(
           fact(
               facts,
-              name + ": Italy owns France at the end of its turn",
+              name + ": " + report.ally() + " own " + report.target() + " at the end of their turn",
               plan.metrics().italyOwnsFrance().format()));
       facts.add(
           fact(
               facts,
-              name + ": Germany conquers France itself (forbidden)",
+              name + ": " + report.attacker() + " conquer " + report.target() + " (forbidden)",
               plan.metrics().germanyConquersFrance().format()));
       facts.add(
           fact(
               facts,
-              name + ": German aircraft lost on average",
+              name + ": aircraft of the " + report.attacker() + " lost on average",
               String.format(Locale.ROOT, "%.1f", plan.metrics().meanGermanAircraftLost())));
       facts.add(
           fact(
               facts,
-              name + ": German TUV lost on average",
+              name + ": TUV of the " + report.attacker() + " lost on average",
               String.format(Locale.ROOT, "%.1f", plan.metrics().meanGermanTuvLost())));
     }
     return facts;

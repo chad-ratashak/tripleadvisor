@@ -18,8 +18,9 @@ window.STAFF_TEXT = {
     advise: "Parse directive",
     plan: "Evaluate plans",
     explain: "Brief me",
-    start: "Host game (staff plays Germans)",
+    start: "Host game (staff plays Germans; nothing moves until Run)",
     sendOrders: "Send top plan's orders",
+    run: "Run to the end of round 1",
     approve: "Approve",
     reject: "Reject",
     status: "Refresh status",
@@ -40,6 +41,7 @@ window.STAFF_TEXT = {
     doctrineTitle: "Title",
     pending: "The engine is waiting for your decision",
     nothingPending: "Nothing is waiting for approval.",
+    notShown: "Refresh the status first: this page has not shown the proposal it would answer.",
     status: "Status",
     working: "Working…",
     failed: "The request failed: "
@@ -62,6 +64,6 @@ window.STAFF_TEXT = {
     tuv: "German TUV lost",
     verdict: "verdict"
   },
-  verdicts: { feasible: "keeps the constraint", rejected: "rejected" },
+  verdicts: { feasible: "keeps the constraint", feasibleThin: "keeps the constraint (unconfirmed by the 95% bound)", rejected: "rejected", rejectedThin: "rejected (unconfirmed by the 95% bound)" },
   footer: "Every rate shows its sample size and a 95% interval. The language model never decides legality or odds."
 };

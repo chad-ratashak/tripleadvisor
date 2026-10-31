@@ -1,7 +1,7 @@
 # TripleA AI General Staff — Status and Results
 
 Date: 2026-10-30. Milestones **M0 through M5 are complete and M6 has its first slice**, all on the
-`general-staff` branch: the module builds, its 73 tests are green and the repo-wide `./verify`
+`general-staff` branch: the module builds, its 104 tests are green and the repo-wide `./verify`
 passes. Every phase of the brief now has working code: read-only bridge (2), conversational advisor
 (3), tactical evaluation (4), the Operation Paris planner (5), approved execution (6) and the start
 of the full General Staff (7). The plan is
@@ -22,16 +22,16 @@ The Gradle subproject `:general-staff` at [game-app/general-staff](../../game-ap
 |---|---|
 | `engine` | Opens a map XML or `.tsvg`; gives the engine in-memory client settings; **hosts a whole game in this JVM** (`HeadlessGameHost` over the engine's `ServerGame` with a headless `StaffLaunchAction`) |
 | `observe` | Read-only JSON: position (players with treasuries, production, capitals, objectives **evaluated by the engine's own condition code**, relationships, territories with unit stacks) and the history tree |
-| `sim` | **The engine on copies**: `Sandbox` (a deserialized copy with seeded dice; branch by `fork`), `TurnSimulator` (starts the real delegate, performs orders through the real move delegate, fights with the real battle code, ends the delegate), `StaffDelegateBridge`, `SimulationPlayer` (retreat-after-round policy), `OpponentPolicy` (passive, reinforce a territory) |
-| `rules` | `LegalityChecker` (engine validator or real delegate on a positioned copy), `ReachabilityIndex` (legal destinations per unit group), `MoveJudge` |
+| `sim` | **The engine on copies**: `Sandbox` (a deserialized copy with seeded dice; branch by `fork`), `TurnSimulator` (starts the real delegate, performs orders through the real move delegate, fights with the real battle code, ends the delegate), `StaffDelegateBridge`, `SimulationPlayer` (retreat-after-round policy, finding the battle by the id the engine passes, and no "AI combat step pause": the engine's AI base class sleeps a second per casualty step for an audience a simulation does not have), `OpponentPolicy` (passive, reinforce a territory), `LandingPolicy` (flies aircraft that cannot stay where they are to the nearest own or allied territory the engine accepts) |
+| `rules` | `LegalityChecker` (engine validator or real delegate on a positioned copy; every refusal carries a `reason`), `ReachabilityIndex` (legal destinations per unit group; a group with none carries the engine's refusal), `Routes` (candidate routes, friendliest first, because the map's one shortest route may run through enemy ground when an equally short friendly one exists), `MoveJudge` |
 | `odds` | `BattleOddsService` over `ConcurrentBattleCalculator`; `StrafeEvaluator` over force subsets and retreat rounds; every rate a `Proportion` with `n` and a 95% Wilson interval |
-| `plan` | `OperationParisBaseline` (calculator PoC) and **`OperationParisPlanner`**: eleven plan families (Italy alone; air strikes retreating after rounds 1–3; strafes with 3, 6 or 9 cheapest land units retreating after rounds 1–2; the full attack), each sampled by N trajectories on forked sandboxes (German combat move and battle, an intervening Allied policy, the Italian combat move and battle), ranked lexicographically by `PlanEvaluator` under the hard constraint |
-| `staff` | **Approved execution**: `StaffPlayer` is an `AbstractAi` that proposes a step's orders to the `ApprovalGate`, blocks the engine thread until the operator decides, saves the game, performs the approved orders through the real delegate and records every answer; `ExecutionSession` hosts a game with the staff as one or more powers and idle stand-ins or the engine's Fast AI as the others; `AfterActionReport`; hybrid mode hands a step's remainder to Fast AI |
+| `plan` | `OperationParisBaseline` (calculator PoC) and **`OperationParisPlanner`**: eleven plan families (Italy alone; air strikes retreating after rounds 1–3; strafes with 3, 6 or 9 cheapest land units retreating after rounds 1–2; the full attack), each sampled by N trajectories on forked sandboxes (German combat move and battle, an intervening Allied policy, the Italian combat move and battle), ranked lexicographically by `PlanEvaluator` under the hard constraint; each verdict carries an evidence flag (feasible on the observed rate, confirmed only when the 95% interval settles it: upper bound within tolerance for a kept plan, lower bound above it for a rejected one), neighbouring ranks whose intervals overlap are named, families that would order the same force are collapsed, and every description, reason and assumption is worded for the attacker, ally, defender and target given |
+| `staff` | **Approved execution**: `StaffPlayer` is an `AbstractAi` that proposes a step's orders to the `ApprovalGate` (a decision names the step and the proposal's time, so a stale click answers nothing), blocks the engine thread until the operator decides, saves the game, performs the approved orders through the real delegate and records every answer (at a non-combat move it also proposes landing orders for every aircraft the engine says cannot stay); `ExecutionSession` hosts a game with the staff as one or more powers and idle stand-ins or the engine's Fast AI as the others; `AfterActionReport`; hybrid mode hands a step's remainder to Fast AI |
 | `doctrine` | `DoctrineStore` (standing directives in a JSON file, with the war footing among named powers when added) and `DoctrineReconciler` (unknown names, achieved targets, new wars, peace) |
-| `llm` | `OllamaClient`, `IntentParser` (directive → checked JSON, unknown names become questions), `Explainer` (briefings around labelled engine figures, invented digits flagged), `DirectiveEval` |
+| `llm` | `OllamaClient`, `IntentParser` (directive → checked JSON, unknown names become questions with the capitals of the powers named), `Explainer` (briefings around labelled engine figures, invented digits flagged), `DirectiveEval` |
 | `api` | `StaffService`, the `Cli`, `LocalHttpApi` (loopback JSON; **the command page at `/ui`** with wording, wiring and layout in separate files) |
 
-**Tests: 73**, all offline. Beyond the earlier ones: `SandboxTest` (independence of forks and of the
+**Tests: 104** (one more, `LiveMapFactsTest`, runs only when the Global 1940 map is installed). Beyond the earlier ones: `PlanEvaluatorTest` (the evidence flag on kept and rejected plans, unseparated ranks), `SimulationPlayerTest` (no AI pause), `ForceSubsetsTest` (stable tie-break, proven with a reversed key), `CliTest` (`legal` output contract), `ApprovalGateTest` (a decision for an older proposal of the same step is refused), `LandingPolicyTest` (fighters left over an empty sea zone are removed by the engine unless flown home), `SandboxTest` (independence of forks and of the
 live game; same seed, same battle), `TurnSimulatorTest` (refused orders reported, real battle
 outcomes recorded, retreat policy honoured), `OpponentPolicyTest`, `OperationParisPlannerTest`
 (the full attack is rejected, the air strike never conquers, feasible plans rank first, live game
@@ -71,10 +71,12 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home
 | Serialized Global 1940 game data (calculator options, no history) | 751 KB |
 | `:general-staff:check` warm (format check, PMD, 55 tests) | about 30 s |
 | One short directive through Ollama structured output (model load included) | llama3.2:3b 11 s, phi4-mini 10 s, gemma4:e2b 25 s |
-| Planner: 11 families × 6 trajectories (66 forked copies of Global 1940, each running five engine steps with real battles), from the CLI including JVM start | 43 s wall |
+| Planner: 11 families × 6 trajectories (66 forked copies of Global 1940, each running five engine steps with real battles), from the CLI including JVM start | 43 s wall before the AI-pause fix |
+| Planner on the live 2nd Edition file: 11 families × 24 trajectories (264 forked copies, each with up to two real battles and two landing moves), from the CLI including JVM start | 110 s wall before the AI-pause fix (17.8 s CPU); 3.4 s wall after (15.1 s CPU) |
 | Hosted game in this JVM: Germany staffed, nine idle powers, round 1 with two approved orders, saves before each movement step | about 6 s |
 | End-to-end test (directive → doctrine → 2 families × 4 trajectories → hosted execution → reconciliation) | 22 s |
 | `:general-staff:check` warm (format check, PMD, 73 tests, two forks) | about 80 s |
+| `:general-staff:check` warm (format check, PMD, 104 tests, two forks) after the AI-pause fix | about 15 s |
 
 ## First results: Operation Paris on the Balanced fixture (seed 7, n = 1,000 per scenario)
 
@@ -115,6 +117,16 @@ What the numbers say to the planner (observations about the method, not conclusi
 Six trajectories give very wide intervals (a 0-of-6 is 0% [0–39%]); the point is the method and the
 ordering, not the digits. Figures are the engine's: real moves, real battles with seeded dice.
 
+**Caveat (added 2026-10-30 evening):** this table is the first planner's run on the Balanced fixture
+and its figures do not reproduce. The live-map fleet ran 24 trajectories per plan on the 2nd Edition
+file and found, for example, the six-land strafe conquering France in some trajectories, so the
+"force-size cliff" below was an artefact of six samples. Two defects also shaped these numbers: the
+retreat round was never applied to a lone battle (the engine fights a single pending battle through
+the tracker, bypassing the delegate's "current battle"), and surviving aircraft were removed at the end
+of the German non-combat move for want of a landing order. Both are fixed; the current figures are in
+[04-live-map-scenarios.md](04-live-map-scenarios.md), with the evidence flag the planner now attaches to
+every verdict.
+
 | rank | plan | Italy owns France | Germany conquers France | German TUV lost | Italian PU gain |
 |---|---|---|---|---|---|
 | 1 | strafe-6land-r1 (aircraft + 6 cheapest land units, retreat after round 1) | 100% [61–100] | 0% [0–39] | 116 | 19.0 |
@@ -131,11 +143,12 @@ Three things the planner established that the calculator alone could not:
   conquered France in these samples; nine did so two times in three. The planner found the cliff by
   running the real battle with the real retreat rule, which is exactly the kind of fact a human
   staff would otherwise estimate.
-- **Every German aircraft died in every strike.** The current German retreat policy answers the
-  engine's retreat question only by round, and once the land units are gone the aircraft fight on.
-  "German TUV lost" is therefore dominated by nine aircraft (about 98 TUV). A policy that pulls
-  aircraft out when the land units are gone (as the calculator's "retreat when only air is left"
-  does) is the first improvement to make; it is a one-line change in `SimulationPlayer`.
+- **Every German aircraft died in every strike** in this run. Two causes, both found by the
+  live-map fleet and since fixed: the retreat policy read the delegate's "current battle", which
+  stays empty when the engine fights a lone battle through the tracker, so the aircraft never
+  retreated; and the planner never ran the German non-combat move, so every survivor was removed by
+  the engine for want of a landing place. An all-air attacker that retreats stays over the battle
+  site (the engine's rule), which is exactly why the landing step matters.
 - **The Italian PU gain is the French bank** (19 PUs when Italy walks in or wins), visible as the
   treasury change at capture, confirming the reconnaissance finding by running it.
 
@@ -232,13 +245,24 @@ a manual gate the engine thread blocks at the combat move until `/execute/approv
 
 ## Open items carried forward
 
-- Owner decisions from the plan: map download permission, target ruleset (2nd Edition assumed),
-  upstream hooks. CLI, API and a command page are in place.
-- Planner: pull aircraft out when the land units are gone; evaluate the delayed-conquest family
-  (needs full-round simulation with policies for every power); larger trajectory counts for real
-  intervals; a cheaper branch than re-deserializing a snapshot.
+- The map is installed (2026-10-30; see [04-live-map-scenarios.md](04-live-map-scenarios.md)).
+  Still the owner's: target ruleset (2nd Edition assumed) and whether any upstream hook is ever
+  proposed (fork-only until extensive play testing; see `CLAUDE.md`).
+- Planner: evaluate the delayed-conquest family (needs full-round simulation with policies for
+  every power); a tolerance of zero can never be confirmed by a finite sample, so a directive that
+  means "never" needs a stated tolerance or a very large run; a cheaper branch than
+  re-deserializing a snapshot; a retreat policy that also pulls aircraft out once the land units
+  are gone; runs on the same file and seed still differ slightly (losses by a few hundredths of a
+  TUV; once, one plan of eleven flipped one trajectory of 24) because the engine draws unit ids at
+  random on every load and hashes units by id (caching the parsed game bytes between runs would
+  remove it); the JSON metric names keep the Operation Paris words (`italyOwnsFrance` is "the ally
+  owns the target").
 - Execution: purchases and placement are still the engine's defaults for a staffed power;
   per-theatre delegation maps a directive's `delegated_theaters` to units by hand today.
+- Engine quirk, not this module's: the national-objective history line written by
+  `TriggerAttachment` prints `Optional[PUs]` because it concatenates an `Optional<String>`; seen in
+  a hosted run on the live file (04, finding 41). A candidate upstream bug report, to be filed only
+  when the owner says so; nothing under `game-core` changes here.
 - M6 remainder: Fast AI opponents run only in hosted games, not in sandboxes; the command page is
   functional but plain; doctrine is reconciled on request, not automatically each turn.
 - Language models: grow the directive set beyond 20; try a few-shot prompt with the map's own

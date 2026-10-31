@@ -231,7 +231,7 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home
 
 ## Decisions needed from the owner before M1/M2 complete
 
-1. Permission to download and install the World War II Global map (≈20 MB zip from GitHub) into `~/triplea/downloadedMaps` (or a project-local maps folder).
+1. ~~Permission to download and install the World War II Global map~~ Done 2026-10-30: installed at `~/triplea/downloadedMaps/world_war_ii_global/` (see [04-live-map-scenarios.md](04-live-map-scenarios.md)).
 2. Target ruleset: Global 1940 **2nd Edition** (assumed) vs Balanced Mod vs Original.
 3. Whether the owner-facing surface should start as CLI + HTTP API (assumed) or embed in the desktop client sooner (M5 optional registration).
 4. Whether small upstream-friendly hooks (seedable calculator dice; player-type registration) may be proposed to `triplea-game/triplea`, or kept fork-local.

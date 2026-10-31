@@ -50,7 +50,8 @@ public final class ReportFormatter {
           strafe);
     }
     row(out, ReportText.SCENARIO_ITALY_ALONE, report.italyAlone());
-    out.append(ReportText.STRAFE_NOTE).append('\n').append('\n');
+    out.append(ReportText.STRAFE_NOTE).append('\n');
+    out.append(ReportText.MUTUAL_LOSS_NOTE).append('\n').append('\n');
 
     final FollowUpEstimate followUp = report.italianFollowUp();
     out.append(ReportText.FOLLOW_UP_TITLE).append('\n');

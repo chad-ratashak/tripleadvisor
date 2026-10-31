@@ -63,6 +63,10 @@ class LocalHttpApiTest {
       assertThat(notJson.statusCode()).isEqualTo(400);
 
       assertThat(post(base + "/nowhere", "{}").statusCode()).isEqualTo(404);
+      final HttpResponse<String> noDirective =
+          post(base + "/validate-directive", "{\"game\":\"" + xml + "\"}");
+      assertThat(noDirective.statusCode()).isEqualTo(400);
+      assertThat(noDirective.body()).contains("parsed");
       assertThat(get(base + "/observe").statusCode()).isEqualTo(405);
 
       final HttpResponse<String> noModel =
@@ -84,6 +88,62 @@ class LocalHttpApiTest {
             .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
             .build(),
         HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void hostingRunsOnAPrivateCopyAndOrdersCanBeFiledBeforeTheEngineStarts(
+      @TempDir final Path tempDir) throws Exception {
+    final Path xml = tempDir.resolve("minimap.xml");
+    try (InputStream in = getClass().getClassLoader().getResourceAsStream("minimap.xml")) {
+      Files.copy(in, xml);
+    }
+    final StaffService service =
+        new StaffService(
+            new OllamaClient(URI.create("http://127.0.0.1:9"), Duration.ofSeconds(1)), "none");
+    try (LocalHttpApi api = new LocalHttpApi(0, service)) {
+      api.start();
+      final String base = "http://127.0.0.1:" + api.port();
+      final JsonObject before = json(post(base + "/observe", "{\"game\":\"" + xml + "\"}"));
+
+      final HttpResponse<String> started =
+          post(
+              base + "/execute/start",
+              "{\"game\":\""
+                  + xml
+                  + "\",\"staff\":[\"Russians\"],\"mode\":\"auto-approve\","
+                  + "\"run\":false,\"work\":\""
+                  + tempDir.resolve("host")
+                  + "\","
+                  + "\"steps\":[{\"step\":\"russianCombatMove\",\"orders\":[],\"retreatAfterRound\":-1}]}");
+      assertThat(started.statusCode()).as(started.body()).isEqualTo(200);
+      assertThat(json(started).get("running").getAsBoolean()).isFalse();
+      assertThat(json(started).get("round").getAsInt()).isEqualTo(before.get("round").getAsInt());
+
+      final HttpResponse<String> nothingPending =
+          post(base + "/execute/approve", "{\"by\":\"test\",\"step\":\"russianCombatMove\"}");
+      assertThat(json(nothingPending).get("approved").getAsBoolean()).isFalse();
+      assertThat(json(nothingPending).get("reason").getAsString()).contains("nothing is waiting");
+
+      final HttpResponse<String> run = post(base + "/execute/run", "{\"lastRound\":1}");
+      assertThat(run.statusCode()).as(run.body()).isEqualTo(200);
+      JsonObject status = json(run);
+      final long deadline = System.nanoTime() + Duration.ofSeconds(90).toNanos();
+      while (status.get("running").getAsBoolean() && System.nanoTime() < deadline) {
+        Thread.sleep(200);
+        status = json(post(base + "/execute/status", "{}"));
+      }
+      assertThat(status.get("running").getAsBoolean()).as(status.toString()).isFalse();
+      assertThat(status.get("round").getAsInt() > 1 || status.get("gameOver").getAsBoolean())
+          .as(status.toString())
+          .isTrue();
+      assertThat(post(base + "/execute/report", "{}").statusCode()).isEqualTo(200);
+
+      // The game the API observes is untouched by the hosted copy.
+      final JsonObject after = json(post(base + "/observe", "{\"game\":\"" + xml + "\"}"));
+      assertThat(after.get("round").getAsInt()).isEqualTo(before.get("round").getAsInt());
+      assertThat(after.get("step")).isEqualTo(before.get("step"));
+      assertThat(post(base + "/execute/stop", "{}").statusCode()).isEqualTo(200);
+    }
   }
 
   private static JsonObject json(final HttpResponse<String> response) {

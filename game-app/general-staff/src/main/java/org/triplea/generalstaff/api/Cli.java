@@ -83,6 +83,7 @@ public final class Cli {
         case "odds" -> odds(service, arguments, out, err);
         case "plan" -> plan(service, arguments, out, err);
         case "advise" -> advise(service, arguments, out);
+        case "validate" -> validate(service, arguments, out);
         case "explain" -> explain(service, arguments, out);
         case "eval" -> eval(service, arguments, out);
         case "serve" -> serve(service, arguments, out);
@@ -127,7 +128,9 @@ public final class Cli {
             arguments.required("--to"),
             arguments.required("--type"),
             arguments.intValue("--count", 1));
-    out.println(verdict.legal() ? CliText.VERDICT_LEGAL : CliText.VERDICT_ILLEGAL);
+    if (!arguments.flag("--json")) {
+      out.println(verdict.legal() ? CliText.VERDICT_LEGAL : CliText.VERDICT_ILLEGAL);
+    }
     out.println(GSON.toJson(verdict));
     return verdict.legal() ? 0 : EXIT_NEGATIVE;
   }
@@ -190,7 +193,11 @@ public final class Cli {
             arguments.intValue("--trajectories", DEFAULT_TRAJECTORIES),
             arguments.longValue("--seed", StaffService.DEFAULT_SEED),
             arguments.doubleValue("--tolerance", 0.0),
-            arguments.values("--intervening").stream().findFirst().orElse("passive"));
+            arguments.values("--intervening").stream().findFirst().orElse("passive"),
+            arguments.values("--attacker").stream().findFirst().orElse("Germans"),
+            arguments.values("--ally").stream().findFirst().orElse("Italians"),
+            arguments.values("--defender").stream().findFirst().orElse("French"),
+            arguments.values("--target").stream().findFirst().orElse("France"));
     final Optional<Briefing> briefing =
         arguments.flag("--explain")
             ? Optional.of(
@@ -226,6 +233,26 @@ public final class Cli {
             service.load(arguments.requiredPath("--game")),
             arguments.required("--directive"),
             Optional.empty());
+    out.println(parsed.valid() ? CliText.DIRECTIVE_VALID : CliText.DIRECTIVE_QUESTIONS);
+    for (final String question : parsed.clarifications()) {
+      out.println("  - " + question);
+    }
+    out.println(GSON.toJson(parsed));
+    return parsed.valid() ? 0 : EXIT_NEGATIVE;
+  }
+
+  private static int validate(
+      final StaffService service, final Arguments arguments, final PrintStream out)
+      throws IOException {
+    final String json =
+        arguments.flag("--parsed-file")
+            ? Files.readString(Path.of(arguments.required("--parsed-file")), StandardCharsets.UTF_8)
+            : arguments.required("--parsed");
+    final ParsedDirective parsed =
+        service.validateDirective(
+            service.load(arguments.requiredPath("--game")),
+            json,
+            arguments.values("--source").stream().findFirst().orElse("external"));
     out.println(parsed.valid() ? CliText.DIRECTIVE_VALID : CliText.DIRECTIVE_QUESTIONS);
     for (final String question : parsed.clarifications()) {
       out.println("  - " + question);

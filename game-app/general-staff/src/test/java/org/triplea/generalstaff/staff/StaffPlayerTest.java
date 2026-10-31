@@ -3,6 +3,7 @@ package org.triplea.generalstaff.staff;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import games.strategy.engine.data.GameData;
+import games.strategy.engine.data.GamePlayer;
 import games.strategy.engine.data.Territory;
 import games.strategy.triplea.delegate.Matches;
 import games.strategy.triplea.xml.TestMapGameData;
@@ -113,6 +114,54 @@ class StaffPlayerTest {
                   .getTerritoryOrNull("Holland Belgium")
                   .getMatches(unit -> unit.getType().getName().equals("infantry")))
           .hasSize(4);
+    }
+  }
+
+  @Test
+  void aircraftThatCannotStayAreFlownHomeAtTheNonCombatMove(@TempDir final Path work)
+      throws Exception {
+    final GameData data = TestMapGameData.GLOBAL1940.getGameData();
+    try (ExecutionSession session =
+        ExecutionSession.start(data, "Germans", Others.IDLE, ApprovalGate.autoApprove(), work)) {
+      // Two fighters fly over an empty sea zone in the combat move; nothing to fight, nowhere to
+      // stay. Without landing orders the engine would remove them when the non-combat move ends.
+      session.setOrders(
+          List.of(
+              new PlannedStep(
+                  "germansCombatMove",
+                  List.of(
+                      new PlannedOrder(List.of("Western Germany", "112 Sea Zone"), "fighter", 2)),
+                  PlannedStep.NEVER_RETREAT)));
+
+      session.runUntilStep("germansPlace", 60);
+
+      final GamePlayer germans = data.getPlayerList().getPlayerId("Germans");
+      final Territory seaZone = data.getMap().getTerritoryOrNull("112 Sea Zone");
+      assertThat(seaZone.getUnits()).isEmpty();
+      final List<ExecutionRecord> landings =
+          session.staff().records().stream()
+              .filter(record -> record.step().equals("germansNonCombatMove"))
+              .filter(record -> record.order() != null)
+              .toList();
+      assertThat(landings).isNotEmpty();
+      assertThat(landings).allSatisfy(record -> assertThat(record.succeeded()).isTrue());
+      assertThat(landings.stream().mapToInt(record -> record.order().count()).sum()).isEqualTo(2);
+      assertThat(landings)
+          .allSatisfy(
+              record -> {
+                assertThat(record.order().unitType()).isEqualTo("fighter");
+                assertThat(record.order().from()).isEqualTo("112 Sea Zone");
+                final Territory home = data.getMap().getTerritoryOrNull(record.order().to());
+                assertThat(home.isWater()).isFalse();
+                assertThat(home.getOwner()).isEqualTo(germans);
+              });
+      final ApprovalGate.Decision landingDecision =
+          session.gate().history().stream()
+              .filter(decision -> decision.step().equals("germansNonCombatMove"))
+              .findFirst()
+              .orElseThrow();
+      assertThat(landingDecision.orders()).hasSize(1);
+      assertThat(landingDecision.orders().get(0).count()).isEqualTo(2);
     }
   }
 }

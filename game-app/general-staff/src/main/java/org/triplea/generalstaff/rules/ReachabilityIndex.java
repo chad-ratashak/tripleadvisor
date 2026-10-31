@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.function.Predicate;
+import javax.annotation.Nullable;
 import org.triplea.generalstaff.rules.ReachabilityReport.Destination;
 import org.triplea.generalstaff.rules.ReachabilityReport.UnitReach;
 
@@ -54,20 +55,25 @@ public final class ReachabilityIndex {
             if (movementLeft.compareTo(BigDecimal.ZERO) <= 0) {
               return;
             }
+            final Reach reach = destinations(checker, map, territory, representative, movementLeft);
             groups.add(
                 new UnitReach(
                     territory.getName(),
                     type,
                     units.size(),
                     movementLeft.toPlainString(),
-                    destinations(checker, map, territory, representative, movementLeft)));
+                    reach.destinations(),
+                    reach.destinations().isEmpty() ? reach.firstRefusal() : null));
           });
     }
     return new ReachabilityReport(
         checker.stepName(), player.getName(), checker.isNonCombatMove(), groups);
   }
 
-  private static List<Destination> destinations(
+  /** The legal destinations of one group, and the engine's first refusal when there was one. */
+  private record Reach(List<Destination> destinations, @Nullable String firstRefusal) {}
+
+  private static Reach destinations(
       final MoveJudge checker,
       final GameMap map,
       final Territory origin,
@@ -77,14 +83,26 @@ public final class ReachabilityIndex {
     final RelationshipTracker relationships = checker.gameCopy().getRelationshipTracker();
     final Predicate<Territory> passable = passableFor(unit, player);
     final List<Destination> destinations = new ArrayList<>();
+    String firstRefusal = null;
     final List<Territory> candidates =
         map.getNeighborsByMovementCost(origin, movementLeft, passable).stream()
             .sorted(Comparator.comparing(Territory::getName))
             .toList();
     for (final Territory candidate : candidates) {
-      final Optional<Route> route =
-          map.getRouteForUnits(origin, candidate, passable, List.of(unit), player);
-      if (route.isEmpty() || !checker.check(List.of(unit), route.get()).legal()) {
+      Route route = null;
+      for (final Route candidateRoute :
+          Routes.candidates(
+              checker.gameCopy(), origin, candidate, passable, List.of(unit), player)) {
+        final MoveVerdict verdict = checker.check(List.of(unit), candidateRoute);
+        if (verdict.legal()) {
+          route = candidateRoute;
+          break;
+        }
+        if (firstRefusal == null) {
+          firstRefusal = verdict.reason();
+        }
+      }
+      if (route == null) {
         continue;
       }
       final GamePlayer owner = candidate.getOwner();
@@ -94,9 +112,9 @@ public final class ReachabilityIndex {
               candidate.getName(),
               neutral ? null : owner.getName(),
               !neutral && relationships.isAtWar(player, owner),
-              route.get().getAllTerritories().stream().map(Territory::getName).toList()));
+              route.getAllTerritories().stream().map(Territory::getName).toList()));
     }
-    return destinations;
+    return new Reach(destinations, firstRefusal);
   }
 
   private static Predicate<Territory> passableFor(final Unit unit, final GamePlayer player) {

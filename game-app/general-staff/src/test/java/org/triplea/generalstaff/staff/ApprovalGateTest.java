@@ -3,6 +3,7 @@ package org.triplea.generalstaff.staff;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -58,5 +59,42 @@ class ApprovalGateTest {
     released.awaitPending(Duration.ofSeconds(10)).orElseThrow();
     released.release();
     assertThat(engine.get(10, TimeUnit.SECONDS).decidedBy()).isEqualTo("released");
+  }
+
+  @Test
+  void aDecisionNamingAnotherStepIsRefused() throws Exception {
+    final ApprovalGate gate = ApprovalGate.manual(Duration.ofSeconds(30));
+    final CompletableFuture<ApprovalGate.Decision> engine =
+        CompletableFuture.supplyAsync(
+            () -> gate.await("germansCombatMove", "Germans", List.of(ORDER)));
+    gate.awaitPending(Duration.ofSeconds(10)).orElseThrow();
+
+    assertThat(gate.approve("germansNonCombatMove", "test")).isFalse();
+    assertThat(gate.approve("germansNonCombatMove", List.of(ORDER), "test")).isFalse();
+    assertThat(gate.reject("germansNonCombatMove", "test")).isFalse();
+    assertThat(engine.isDone()).isFalse();
+
+    assertThat(gate.approve("germansCombatMove", "test")).isTrue();
+    assertThat(engine.get(10, TimeUnit.SECONDS).approved()).isTrue();
+    assertThat(gate.reject("germansCombatMove", "test")).isFalse();
+  }
+
+  @Test
+  void aDecisionForAnOlderProposalOfTheSameStepIsRefused() throws Exception {
+    final ApprovalGate gate = ApprovalGate.manual(Duration.ofSeconds(30));
+    final CompletableFuture<ApprovalGate.Decision> engine =
+        CompletableFuture.supplyAsync(
+            () -> gate.await("germansCombatMove", "Germans", List.of(ORDER)));
+    final ApprovalGate.Pending pending = gate.awaitPending(Duration.ofSeconds(10)).orElseThrow();
+    final Instant earlier = pending.since().minusSeconds(1);
+
+    assertThat(gate.approve(new ApprovalGate.Shown("germansCombatMove", earlier), "test"))
+        .isFalse();
+    assertThat(gate.reject(new ApprovalGate.Shown("germansCombatMove", earlier), "test")).isFalse();
+    assertThat(engine.isDone()).isFalse();
+
+    assertThat(gate.approve(new ApprovalGate.Shown("germansCombatMove", pending.since()), "test"))
+        .isTrue();
+    assertThat(engine.get(10, TimeUnit.SECONDS).approved()).isTrue();
   }
 }

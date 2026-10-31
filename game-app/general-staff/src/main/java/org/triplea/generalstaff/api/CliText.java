@@ -21,16 +21,19 @@ final class CliText {
 
       Rules
         legal --game <file> --step <step> --from <territory> --to <territory> --type <unit>
-              [--count N]
+              [--count N] [--json]
             Ask the engine whether N units of that type may move between the territories in
-            the named step (for example germansCombatMove). Exit code 3 when they may not.
+            the named step (for example germansCombatMove): the verdict word, then the verdict
+            as JSON (with --json the JSON alone). Exit code 3 when they may not.
         reach --game <file> --step <step> [--from <territory>]
-            Every legal destination of each unit group of the step's player, as JSON.
+            Every legal destination of each unit group of the step's player, as JSON; a group
+            with no destination carries the engine's refusal of the first candidate tried.
 
       Odds
         odds paris --game <file> [--runs N] [--seed S] [--max-pools K] [--json]
             The Operation Paris baseline: a one-page comparison, or the report as JSON.
-            Defaults: runs 2000, seed 1, max-pools 25.
+            Defaults: runs 2000, seed 1, max-pools 25. The seed fixes the follow-up sampling
+            only; the battle calculator rolls its own dice, so win rates move a little between runs.
         odds strafe --game <file> --attacker <player> --defender <player> --territory <t>
               [--rounds R] [--land-step L] [--runs N] [--json]
             Sweep the attacker's strike force (aircraft alone, then L more land units at a
@@ -40,16 +43,24 @@ final class CliText {
       Plans
         plan paris --game <file> [--trajectories N] [--seed S] [--tolerance T]
               [--intervening passive|reinforce] [--explain] [--json]
+              [--attacker P] [--ally P] [--defender P] [--target T]
             Evaluate the Operation Paris plan families by sampled trajectories on cloned
             games run by the engine's own delegates, and rank them under the constraint
-            that Germany must not conquer France (T is the tolerated chance, default 0).
-            Defaults: trajectories 40, seed 1, intervening passive. --explain adds a staff
+            that the attacker must not conquer the target (T is the tolerated chance,
+            default 0). Defaults: trajectories 40, seed 1, intervening passive, Germans
+            strike so that the Italians take France. The seed fixes the dice; unit identities
+            are drawn anew each time a game file is loaded and the engine breaks some ties by
+            identity, so a repeated run can differ slightly in losses. --explain adds a staff
             briefing from the language model.
 
       Language model (needs a running Ollama; OLLAMA_HOST overrides the address)
         advise --game <file> --directive "<text>" [--model M]
             Turn a commander's directive into a checked JSON directive. Exit code 3 when the
             staff has questions back instead.
+        validate --game <file> (--parsed '<json>' | --parsed-file <file>) [--source NAME]
+            Check a directive that something else already put into the structured form
+            (the same JSON shape advise produces): every power and territory name must
+            exist. No model is called. Exit code 3 when the staff has questions back.
         explain --game <file> [--intent "<text>"] [--runs N] [--seed S] [--model M] [--json]
             Run the Operation Paris baseline and have the model brief the commander on it;
             every figure in the briefing is the engine's.
@@ -81,6 +92,7 @@ final class CliText {
   static final String UNKNOWN_ODDS_TARGET = "odds scenarios are 'paris' and 'strafe'";
   static final String UNKNOWN_PLAN_TARGET = "the only plan so far is 'paris'";
   static final String NO_EXECUTION = "no hosted game is running; start one first";
+  static final String COPY_FAILED = "could not copy the game for hosting";
   static final String UNKNOWN_DOCTRINE_TARGET =
       "doctrine commands are list, add, remove and reconcile";
   static final String UNKNOWN_MODE = "mode must be manual, auto-approve or auto-reject";

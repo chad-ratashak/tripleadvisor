@@ -4,6 +4,7 @@ import games.strategy.engine.data.GameData;
 import games.strategy.engine.data.GamePlayer;
 import games.strategy.engine.data.Territory;
 import games.strategy.engine.data.Unit;
+import games.strategy.engine.framework.GameDataUtils;
 import games.strategy.triplea.delegate.Matches;
 import games.strategy.triplea.util.TuvCostsCalculator;
 import java.io.IOException;
@@ -41,6 +42,7 @@ import org.triplea.generalstaff.rules.MoveVerdict;
 import org.triplea.generalstaff.rules.ReachabilityIndex;
 import org.triplea.generalstaff.rules.ReachabilityReport;
 import org.triplea.generalstaff.sim.OpponentPolicy;
+import org.triplea.generalstaff.sim.Sandbox;
 import org.triplea.generalstaff.staff.ApprovalGate;
 import org.triplea.generalstaff.staff.ExecutionSession;
 
@@ -175,6 +177,33 @@ public final class StaffService {
       final long seed,
       final double violationTolerance,
       final String interveningPolicy) {
+    return plan(
+        data,
+        trajectories,
+        seed,
+        violationTolerance,
+        interveningPolicy,
+        "Germans",
+        "Italians",
+        "French",
+        "France");
+  }
+
+  /** The Operation Paris planner pointed at any attacker, ally, defender and target. */
+  public PlanReport plan(
+      final GameData data,
+      final int trajectories,
+      final long seed,
+      final double violationTolerance,
+      final String interveningPolicy,
+      final String attacker,
+      final String ally,
+      final String defender,
+      final String target) {
+    player(data, attacker);
+    player(data, ally);
+    player(data, defender);
+    territory(data, target);
     final OperationParisPlanner.Settings settings =
         OperationParisPlanner.Settings.defaults()
             .withTrajectories(trajectories)
@@ -182,9 +211,16 @@ public final class StaffService {
             .withViolationTolerance(violationTolerance)
             .withInterveningPolicy(
                 "reinforce".equals(interveningPolicy)
-                    ? OpponentPolicy.reinforce("France")
+                    ? OpponentPolicy.reinforce(target)
                     : OpponentPolicy.passive());
-    return OperationParisPlanner.forGlobal1940(data, settings).plan();
+    return new OperationParisPlanner(data, attacker, ally, defender, target, settings).plan();
+  }
+
+  /** Validates a directive someone else already put into the structured form. */
+  public ParsedDirective validateDirective(
+      final GameData data, final String parsedJson, final String source) {
+    return IntentParser.validate(
+        IntentParser.parseJson(parsedJson), observations.export(data), source, 0L, parsedJson);
   }
 
   public Briefing explainPlan(
@@ -193,7 +229,11 @@ public final class StaffService {
         .brief(intent, Explainer.facts(report));
   }
 
-  /** Starts hosting a game with the staff as the named powers; any earlier session is closed. */
+  /**
+   * Starts hosting a private copy of the game with the staff as the named powers; any earlier
+   * session is closed. The loaded game itself stays as it was, so observations keep describing the
+   * file and a second session starts from the same position.
+   */
   public ExecutionSession startExecution(
       final GameData data,
       final Set<String> staffPlayers,
@@ -202,8 +242,11 @@ public final class StaffService {
       final Path workFolder)
       throws IOException {
     stopExecution();
+    final GameData copy =
+        GameDataUtils.createGameDataFromBytes(Sandbox.snapshotOf(data))
+            .orElseThrow(() -> new IllegalStateException(CliText.COPY_FAILED));
     final ExecutionSession session =
-        ExecutionSession.start(data, staffPlayers, others, gate, workFolder);
+        ExecutionSession.start(copy, staffPlayers, others, gate, workFolder);
     execution.set(session);
     return session;
   }

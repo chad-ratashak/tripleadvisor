@@ -60,10 +60,13 @@ final class LlmText {
   static final String UNKNOWN_TERRITORY =
       "The directive names '%s', which is not a territory on this map.";
   static final String CAPITAL_HINT = " Capitals on this map: %s.";
+  static final String CAPITAL_HINT_NAMED = " Capitals of the powers the directive names: %s.";
   static final String INVENTED_NUMBERS =
       "The model wrote figures of its own (%s); only the labelled figures are the engine's.";
   static final String MISSING_FIGURE = "The model cited none of the figures.";
   static final String SUGGESTION = " Did you mean %s?";
+  static final String MISSING_ACTING_PLAYER =
+      "The directive does not say which power acts. Which power is it for?";
 
   static final String BRIEFING_TITLE = "Staff briefing";
   static final String BRIEFING_ASSESSMENT = "Assessment";

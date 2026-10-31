@@ -10,9 +10,18 @@ import javax.annotation.Nullable;
 public record ReachabilityReport(
     String step, String player, boolean nonCombatMove, List<UnitReach> groups) {
 
-  /** One unit type in one origin territory, with every destination the engine allows. */
+  /**
+   * One unit type in one origin territory, with every destination the engine allows. When there is
+   * none, {@code reason} is the engine's refusal of the first candidate tried (candidates within
+   * the unit's movement, in name order), or null when no territory was within its movement at all.
+   */
   public record UnitReach(
-      String origin, String type, int count, String movement, List<Destination> destinations) {}
+      String origin,
+      String type,
+      int count,
+      String movement,
+      List<Destination> destinations,
+      @Nullable String reason) {}
 
   /** A legal destination and the route the map's route finder chose for it. */
   public record Destination(

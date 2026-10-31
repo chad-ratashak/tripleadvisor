@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Function;
 import org.triplea.java.collections.IntegerMap;
 
 /**
@@ -20,11 +21,24 @@ public final class ForceSubsets {
 
   /**
    * The aircraft alone, then the aircraft plus the first {@code step}, {@code 2 * step}, ... land
-   * units, then everything. Land units are committed cheapest first (by TUV cost, then type name),
-   * so each step adds the next-cheapest units.
+   * units, then everything. Land units are committed cheapest first (by TUV cost, then type name,
+   * then unit id), so each step adds the next-cheapest units.
    */
   public static List<Force> byLandCount(
       final Collection<Unit> force, final int step, final IntegerMap<UnitType> costs) {
+    return byLandCount(force, step, costs, unit -> "");
+  }
+
+  /**
+   * As above, with a tie-break the caller names (for example the unit's origin territory) between
+   * land units of equal cost and type. Unit ids are drawn anew every time a game file is loaded, so
+   * without it two runs on the same file can commit different units of the same kind.
+   */
+  public static List<Force> byLandCount(
+      final Collection<Unit> force,
+      final int step,
+      final IntegerMap<UnitType> costs,
+      final Function<Unit, String> tieBreak) {
     if (step <= 0) {
       throw new IllegalArgumentException("step must be positive, was " + step);
     }
@@ -35,6 +49,7 @@ public final class ForceSubsets {
             .sorted(
                 Comparator.comparingInt((Unit unit) -> costs.getInt(unit.getType()))
                     .thenComparing(unit -> unit.getType().getName())
+                    .thenComparing(tieBreak)
                     .thenComparing(unit -> unit.getId().toString()))
             .toList();
     final List<Force> forces = new ArrayList<>();

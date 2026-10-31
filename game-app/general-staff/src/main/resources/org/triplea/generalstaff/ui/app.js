@@ -3,6 +3,7 @@
   const T = window.STAFF_TEXT;
   const $ = (id) => document.getElementById(id);
   let lastPlanReport = null;
+  let lastPending = null;
 
   function fillText() {
     document.querySelectorAll("[data-text]").forEach((el) => {
@@ -41,7 +42,7 @@
 
   function renderPlans(report) {
     lastPlanReport = report;
-    const rows = report.plans.map((p) => `<tr><td>${p.rank}</td><td>${p.id}</td><td>${fmt(p.metrics.italyOwnsFrance)}</td><td>${fmt(p.metrics.germanyConquersFrance)}</td><td>${Math.round(p.metrics.allOrdersAccepted.rate * 100)}%</td><td>${p.metrics.meanGermanTuvLost.toFixed(1)}</td><td>${p.feasible ? T.verdicts.feasible : T.verdicts.rejected}</td></tr>`).join("");
+    const rows = report.plans.map((p) => `<tr><td>${p.rank}</td><td>${p.id}</td><td>${fmt(p.metrics.italyOwnsFrance)}</td><td>${fmt(p.metrics.germanyConquersFrance)}</td><td>${Math.round(p.metrics.allOrdersAccepted.rate * 100)}%</td><td>${p.metrics.meanGermanTuvLost.toFixed(1)}</td><td>${p.feasible ? (p.evidenceSufficient ? T.verdicts.feasible : T.verdicts.feasibleThin) : (p.evidenceSufficient ? T.verdicts.rejected : T.verdicts.rejectedThin)}</td></tr>`).join("");
     $("plans").innerHTML = `<table><thead><tr><th>${T.columns.rank}</th><th>${T.columns.plan}</th><th>${T.columns.italy}</th><th>${T.columns.germany}</th><th>${T.columns.orders}</th><th>${T.columns.tuv}</th><th>${T.columns.verdict}</th></tr></thead><tbody>${rows}</tbody></table>`;
     return report;
   }
@@ -58,8 +59,16 @@
     }));
   }
 
+  // A decision names the step and the time of the proposal the operator saw, so a stale click can
+  // answer neither a newer proposal nor one this page never showed.
+  function decision() {
+    if (!lastPending) throw new Error(T.labels.notShown);
+    return { by: "web", step: lastPending.step, since: lastPending.since };
+  }
+
   function renderStatus(status) {
     const pending = status.pending;
+    lastPending = pending || null;
     $("pending").textContent = pending ? T.labels.pending + "\n" + JSON.stringify(pending, null, 2) : T.labels.nothingPending;
     return status;
   }
@@ -69,10 +78,11 @@
     $("advise").onclick = () => run("adviseOut", () => post("/parse-directive", { game: game(), directive: $("directive").value, model: $("model").value || null }));
     $("plan").onclick = () => run("planOut", async () => renderPlans(await post("/plan/paris", { game: game(), trajectories: Number($("trajectories").value), tolerance: Number($("tolerance").value) / 100, intervening: $("intervening").value })));
     $("explain").onclick = () => run("planOut", async () => { const r = await post("/plan/paris", { game: game(), trajectories: Number($("trajectories").value), tolerance: Number($("tolerance").value) / 100, intervening: $("intervening").value, explain: true, model: $("model").value || null }); renderPlans(r.report); return r.briefing; });
-    $("start").onclick = () => run("executeOut", async () => renderStatus(await post("/execute/start", { game: game(), staff: ["Germans"], others: $("others").value, mode: $("mode").value })));
+    $("start").onclick = () => run("executeOut", async () => renderStatus(await post("/execute/start", { game: game(), staff: ["Germans"], others: $("others").value, mode: $("mode").value, run: false })));
+    $("run").onclick = () => run("executeOut", async () => renderStatus(await post("/execute/run", { lastRound: 1 })));
     $("sendOrders").onclick = () => run("executeOut", async () => renderStatus(await post("/execute/orders", { steps: ordersFromTopPlan() })));
-    $("approve").onclick = () => run("executeOut", async () => { await post("/execute/approve", { by: "web" }); return renderStatus(await post("/execute/status", {})); });
-    $("reject").onclick = () => run("executeOut", async () => { await post("/execute/reject", { by: "web" }); return renderStatus(await post("/execute/status", {})); });
+    $("approve").onclick = () => run("executeOut", async () => { const answer = await post("/execute/approve", decision()); const status = renderStatus(await post("/execute/status", {})); return answer.approved ? status : answer; });
+    $("reject").onclick = () => run("executeOut", async () => { const answer = await post("/execute/reject", decision()); const status = renderStatus(await post("/execute/status", {})); return answer.rejected ? status : answer; });
     $("status").onclick = () => run("executeOut", async () => renderStatus(await post("/execute/status", {})));
     $("report").onclick = () => run("executeOut", () => post("/execute/report", {}));
     $("stop").onclick = () => run("executeOut", () => post("/execute/stop", {}));

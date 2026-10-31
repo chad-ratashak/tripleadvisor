@@ -10,10 +10,17 @@ import games.strategy.triplea.settings.ClientSetting;
 public final class EngineSettings {
   private EngineSettings() {}
 
-  /** Installs in-memory client settings unless a host has already initialized them. */
+  /**
+   * Installs in-memory client settings unless a host has already initialized them. The engine's AI
+   * players pause after each move and each casualty step so a person can watch; the in-memory store
+   * sets both pauses to zero, because nothing here has an audience. A user's real preferences are
+   * never written.
+   */
   public static synchronized void ensureInitialized() {
     if (!initialized()) {
       ClientSetting.setPreferences(new InMemoryPreferences());
+      ClientSetting.aiMovePauseDuration.setValue(0);
+      ClientSetting.aiCombatStepPauseDuration.setValue(0);
     }
   }
 

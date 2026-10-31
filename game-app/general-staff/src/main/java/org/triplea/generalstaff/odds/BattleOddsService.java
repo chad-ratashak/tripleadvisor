@@ -105,8 +105,14 @@ public final class BattleOddsService implements AutoCloseable {
             scenario.defender(),
             scenario.defendingUnits(),
             data),
-        expectedLosses(attackers, runs, BattleResults::getRemainingAttackingUnits),
-        expectedLosses(defenders, runs, BattleResults::getRemainingDefendingUnits),
+        expectedLosses(
+            UnitCounts.of(combatUnits(scenario.attackingUnits())),
+            runs,
+            run -> combatUnits(run.getRemainingAttackingUnits())),
+        expectedLosses(
+            UnitCounts.of(combatUnits(scenario.defendingUnits())),
+            runs,
+            run -> combatUnits(run.getRemainingDefendingUnits())),
         survivorDistribution(runs));
   }
 

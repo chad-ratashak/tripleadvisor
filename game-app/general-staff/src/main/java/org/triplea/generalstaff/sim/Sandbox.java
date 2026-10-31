@@ -93,7 +93,9 @@ public final class Sandbox {
   public SimulationPlayer policy(final String playerName) {
     return players.computeIfAbsent(
         playerName,
-        name -> new SimulationPlayer(name, () -> data.getBattleDelegate().getCurrentBattle()));
+        name ->
+            new SimulationPlayer(
+                name, id -> data.getBattleDelegate().getBattleTracker().getPendingBattle(id)));
   }
 
   public GamePlayer player(final String name) {

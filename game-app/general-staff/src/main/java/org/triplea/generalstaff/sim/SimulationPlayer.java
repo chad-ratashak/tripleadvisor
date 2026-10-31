@@ -13,7 +13,7 @@ import games.strategy.triplea.delegate.remote.ITechDelegate;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Supplier;
+import java.util.function.Function;
 import org.triplea.java.collections.CollectionUtils;
 
 /**
@@ -28,17 +28,17 @@ public final class SimulationPlayer extends AbstractAi {
   /** Value of the retreat round meaning "never retreat by round count". */
   public static final int NEVER = -1;
 
-  private final Supplier<IBattle> currentBattle;
+  private final Function<UUID, IBattle> battles;
   private volatile int retreatAfterRound = NEVER;
 
   public SimulationPlayer(final String name) {
-    this(name, () -> null);
+    this(name, id -> null);
   }
 
-  /** {@code currentBattle} supplies the battle being fought, so the round can be read. */
-  public SimulationPlayer(final String name, final Supplier<IBattle> currentBattle) {
+  /** {@code battles} finds a battle by its id, so the round being fought can be read. */
+  public SimulationPlayer(final String name, final Function<UUID, IBattle> battles) {
     super(name, LABEL);
-    this.currentBattle = currentBattle;
+    this.battles = battles;
   }
 
   /** Retreat as soon as the battle has fought this many rounds; {@link #NEVER} to stay. */
@@ -60,11 +60,21 @@ public final class SimulationPlayer extends AbstractAi {
     if (submerge || retreatAfterRound == NEVER || possibleTerritories.isEmpty()) {
       return Optional.empty();
     }
-    final IBattle battle = currentBattle.get();
+    final IBattle battle = battles.apply(battleId);
     if (battle != null && battle.getBattleRound() >= retreatAfterRound) {
       return Optional.of(CollectionUtils.getAny(possibleTerritories));
     }
     return Optional.empty();
+  }
+
+  /**
+   * The AI base class sleeps here (the client's "AI combat step pause", one second by default) so a
+   * person can watch the battle. A simulation has no audience; the pause would cost a second per
+   * casualty step of every sampled battle.
+   */
+  @Override
+  public void confirmOwnCasualties(final UUID battleId, final String message) {
+    // nothing to wait for
   }
 
   @Override

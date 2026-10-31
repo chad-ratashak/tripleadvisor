@@ -12,6 +12,7 @@ import games.strategy.triplea.delegate.Matches;
 import games.strategy.triplea.util.TuvCostsCalculator;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,6 +34,9 @@ import org.triplea.generalstaff.plan.PlanReport.NotEvaluated;
 import org.triplea.generalstaff.plan.PlanReport.OperationalPlan;
 import org.triplea.generalstaff.plan.PlanReport.OrderSummary;
 import org.triplea.generalstaff.plan.PlanReport.StepOrders;
+import org.triplea.generalstaff.rules.MoveJudge;
+import org.triplea.generalstaff.rules.Routes;
+import org.triplea.generalstaff.sim.LandingPolicy;
 import org.triplea.generalstaff.sim.OpponentPolicy;
 import org.triplea.generalstaff.sim.Sandbox;
 import org.triplea.generalstaff.sim.SimulationPlayer;
@@ -49,7 +53,11 @@ import org.triplea.java.collections.IntegerMap;
  * constraint that Germany must not conquer France. Nothing here touches the live game.
  */
 public final class OperationParisPlanner {
-  /** Which German force and retreat rule to try, and whether Italy follows up. */
+  /**
+   * Which attacking force and retreat rule to try, and whether the ally follows up. A blank {@code
+   * description} is worded by the planner for the powers and the force it finds; a given one is
+   * printed as it is.
+   */
   public record Family(
       String id, String description, int landUnits, int retreatAfterRound, boolean italianAttack) {
     /** Marker for "every land unit of the strike force". */
@@ -143,44 +151,16 @@ public final class OperationParisPlanner {
    */
   public static List<Family> defaultFamilies() {
     final List<Family> families = new ArrayList<>();
-    families.add(
-        new Family(
-            "italy-alone",
-            "No German action; Italy attacks the full garrison.",
-            Family.NO_STRIKE,
-            SimulationPlayer.NEVER,
-            true));
+    families.add(new Family("italy-alone", "", Family.NO_STRIKE, SimulationPlayer.NEVER, true));
     for (int round = 1; round <= 3; round++) {
-      families.add(
-          new Family(
-              "air-strike-r" + round,
-              "German aircraft only, retreating after round " + round + "; Italy attacks.",
-              0,
-              round,
-              true));
+      families.add(new Family("air-strike-r" + round, "", 0, round, true));
     }
     for (final int land : new int[] {3, 6, 9}) {
       for (int round = 1; round <= 2; round++) {
-        families.add(
-            new Family(
-                "strafe-" + land + "land-r" + round,
-                "German aircraft plus the "
-                    + land
-                    + " cheapest land units, retreating after round "
-                    + round
-                    + "; Italy attacks.",
-                land,
-                round,
-                true));
+        families.add(new Family("strafe-" + land + "land-r" + round, "", land, round, true));
       }
     }
-    families.add(
-        new Family(
-            "full-attack",
-            "The whole German strike force fights to the end; Italy attacks if France is still enemy-held.",
-            Family.ALL_LAND,
-            SimulationPlayer.NEVER,
-            true));
+    families.add(new Family("full-attack", "", Family.ALL_LAND, SimulationPlayer.NEVER, true));
     return families;
   }
 
@@ -198,6 +178,10 @@ public final class OperationParisPlanner {
       final String defenderName,
       final String targetName,
       final Settings settings) {
+    if (attackerName.equals(allyName)) {
+      throw new IllegalArgumentException(
+          String.format(Locale.ROOT, ReportText.SAME_POWER, attackerName));
+    }
     this.live = live;
     this.attackerName = attackerName;
     this.allyName = allyName;
@@ -219,41 +203,233 @@ public final class OperationParisPlanner {
     final GamePlayer ally = base.player(allyName);
     final Territory target = base.territory(targetName);
     final List<Unit> air = ForceSelection.airStrikeForce(base.data(), attacker, target);
+    // Same-cost, same-type land units are committed by origin territory, then unit id, so two runs
+    // on the same file order the same units even though the engine draws new ids on every load.
+    final Map<UUID, String> origins = originsOf(base.data());
     final List<Unit> land =
         ForceSubsets.byLandCount(
                 ForceSelection.landStrikeForce(base.data(), attacker, target),
                 1,
-                new TuvCostsCalculator().getCostsForTuv(attacker))
+                new TuvCostsCalculator().getCostsForTuv(attacker),
+                unit -> origins.getOrDefault(unit.getId(), ""))
             .stream()
             .reduce((first, second) -> second)
             .map(force -> force.units().stream().filter(Matches.unitIsAir().negate()).toList())
             .orElse(List.of());
     final List<Unit> allyForce = ForceSelection.strikeForce(base.data(), ally, target);
-    final Forces forces = new Forces(air, land, allyForce);
+    final GamePlayer owner = target.getOwner();
+    final boolean allyCanAttack =
+        !allyForce.isEmpty()
+            && (owner.isNull() || base.data().getRelationshipTracker().isAtWar(ally, owner));
+    final Forces forces = new Forces(air, land, allyForce, allyCanAttack);
     final Steps steps = Steps.of(base, attacker, ally, settings.interveningPlayers());
+    final List<NotEvaluated> notEvaluated = new ArrayList<>();
+    final List<Family> evaluable = new ArrayList<>();
+    final Map<String, String> firstFamilyOfForce = new HashMap<>();
+    for (final Family family : settings.families()) {
+      final Optional<String> reason =
+          reasonNotToEvaluate(family, base.data(), attacker, ally, target, forces);
+      if (reason.isPresent()) {
+        notEvaluated.add(new NotEvaluated(family.id(), reason.get()));
+        continue;
+      }
+      final String earlier = firstFamilyOfForce.putIfAbsent(signature(family, forces), family.id());
+      if (earlier != null) {
+        notEvaluated.add(new NotEvaluated(family.id(), sameForceReason(family, forces, earlier)));
+        continue;
+      }
+      evaluable.add(family);
+    }
+    notEvaluated.add(
+        new NotEvaluated("delayed-conquest", delayedConquestReason(attacker, ally, target)));
 
     final ExecutorService pool = Executors.newFixedThreadPool(settings.threads());
     try {
       final List<OperationalPlan> plans = new ArrayList<>();
-      for (final Family family : settings.families()) {
+      for (final Family family : evaluable) {
         plans.add(evaluate(family, start, forces, steps, pool));
       }
       return new PlanReport(
           live.getGameName(),
+          attackerName,
+          allyName,
+          defenderName,
+          targetName,
           settings.trajectories(),
+          interveningPreview(start, steps),
           settings.seed(),
           settings.violationTolerance(),
           settings.interveningPolicy().name(),
-          PlanEvaluator.rank(plans, settings.violationTolerance()),
-          List.of(
-              new NotEvaluated(
-                  "delayed-conquest",
-                  "Strike on the German turn and attack on Italy's next turn: needs a full round of"
-                      + " every power's turn, including French purchases and placement.")),
-          ReportText.PLAN_ASSUMPTIONS);
+          PlanEvaluator.rank(plans, settings.violationTolerance(), attackerName, targetName),
+          List.copyOf(notEvaluated),
+          assumptions());
     } finally {
       pool.shutdownNow();
     }
+  }
+
+  /** The assumptions, worded for the powers and the target this planner was given. */
+  private List<String> assumptions() {
+    return ReportText.PLAN_ASSUMPTIONS.stream()
+        .map(
+            template ->
+                String.format(
+                    Locale.ROOT, template, attackerName, allyName, defenderName, targetName))
+        .toList();
+  }
+
+  /**
+   * What the family orders, in words: two families that would order the same force (because fewer
+   * land units stand in range than they ask for) share a signature, and only the first is sampled.
+   */
+  private static String signature(final Family family, final Forces forces) {
+    if (!family.germanStrike()) {
+      return "ally-alone:" + family.italianAttack();
+    }
+    return "strike:"
+        + forces.germanForce(family).size()
+        + ":"
+        + family.retreatAfterRound()
+        + ":"
+        + family.italianAttack();
+  }
+
+  /** The family's description, worded for the powers and the force the planner found. */
+  private String describe(final Family family, final Forces forces) {
+    if (!family.description().isBlank()) {
+      return family.description();
+    }
+    if (!family.germanStrike()) {
+      return String.format(Locale.ROOT, ReportText.FAMILY_ALLY_ALONE, attackerName, allyName);
+    }
+    final String retreat =
+        family.retreatAfterRound() == SimulationPlayer.NEVER
+            ? ReportText.FAMILY_FIGHT_ON
+            : String.format(
+                Locale.ROOT, ReportText.FAMILY_RETREAT_AFTER, family.retreatAfterRound());
+    final int available = forces.landCheapestFirst().size();
+    final String strike;
+    if (family.landUnits() == Family.ALL_LAND) {
+      strike = String.format(Locale.ROOT, ReportText.FAMILY_FULL_ATTACK, attackerName, retreat);
+    } else if (family.landUnits() == 0) {
+      strike = String.format(Locale.ROOT, ReportText.FAMILY_AIR_STRIKE, attackerName, retreat);
+    } else if (forces.air().isEmpty()) {
+      strike =
+          String.format(
+              Locale.ROOT,
+              family.landUnits() >= available
+                  ? ReportText.FAMILY_STRAFE_NO_AIR_ALL_LAND
+                  : ReportText.FAMILY_STRAFE_NO_AIR,
+              Math.min(family.landUnits(), available),
+              attackerName,
+              retreat);
+    } else if (family.landUnits() >= available) {
+      strike =
+          String.format(
+              Locale.ROOT, ReportText.FAMILY_STRAFE_ALL_LAND, attackerName, available, retreat);
+    } else {
+      strike =
+          String.format(
+              Locale.ROOT, ReportText.FAMILY_STRAFE, attackerName, family.landUnits(), retreat);
+    }
+    final String followUp;
+    if (!family.italianAttack()) {
+      followUp = String.format(Locale.ROOT, ReportText.FAMILY_ALLY_HOLDS, allyName);
+    } else if (!forces.allyCanAttack()) {
+      followUp = String.format(Locale.ROOT, ReportText.FAMILY_ALLY_NO_ATTACK, allyName);
+    } else {
+      followUp = String.format(Locale.ROOT, ReportText.FAMILY_ALLY_ATTACKS, allyName, targetName);
+    }
+    return strike + followUp;
+  }
+
+  /** The delayed-conquest family cannot be sampled yet; it says why in the position's terms. */
+  private String delayedConquestReason(
+      final GamePlayer attacker, final GamePlayer ally, final Territory target) {
+    final GamePlayer owner = target.getOwner();
+    if (attacker.equals(owner) || ally.equals(owner)) {
+      return String.format(
+          Locale.ROOT, ReportText.NOT_EVALUATED_OWNED, owner.getName(), targetName);
+    }
+    return String.format(
+        Locale.ROOT, ReportText.NOT_EVALUATED_DELAYED, attackerName, allyName, defenderName);
+  }
+
+  private static Map<UUID, String> originsOf(final GameData data) {
+    final Map<UUID, String> origins = new HashMap<>();
+    for (final Territory territory : data.getMap().getTerritories()) {
+      for (final Unit unit : territory.getUnits()) {
+        origins.put(unit.getId(), territory.getName());
+      }
+    }
+    return origins;
+  }
+
+  /** Why a family cannot be sampled at all: the target is already held, no war, or no force. */
+  private Optional<String> reasonNotToEvaluate(
+      final Family family,
+      final GameData data,
+      final GamePlayer attacker,
+      final GamePlayer ally,
+      final Territory target,
+      final Forces forces) {
+    final GamePlayer owner = target.getOwner();
+    if (attacker.equals(owner) || ally.equals(owner)) {
+      return Optional.of(
+          String.format(Locale.ROOT, ReportText.NOT_EVALUATED_OWNED, owner.getName(), targetName));
+    }
+    final GamePlayer mover = family.germanStrike() ? attacker : ally;
+    if (!owner.isNull() && !data.getRelationshipTracker().isAtWar(mover, owner)) {
+      return Optional.of(
+          String.format(
+              Locale.ROOT,
+              ReportText.NOT_EVALUATED_NOT_AT_WAR,
+              mover.getName(),
+              owner.getName(),
+              targetName));
+    }
+    final List<Unit> force = family.germanStrike() ? forces.germanForce(family) : forces.ally();
+    if (force.isEmpty()) {
+      final boolean aircraftOnly = family.germanStrike() && family.landUnits() == 0;
+      return Optional.of(
+          String.format(
+              Locale.ROOT,
+              aircraftOnly
+                  ? ReportText.NOT_EVALUATED_NO_AIRCRAFT
+                  : ReportText.NOT_EVALUATED_NO_FORCE,
+              mover.getName(),
+              targetName));
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * Why a family is skipped as a repeat: too few land units in range, or an identical definition.
+   */
+  private String sameForceReason(final Family family, final Forces forces, final String earlier) {
+    final int available = forces.landCheapestFirst().size();
+    if (family.landUnits() != Family.ALL_LAND && family.landUnits() > available) {
+      return String.format(
+          Locale.ROOT,
+          ReportText.NOT_EVALUATED_DUPLICATE,
+          available,
+          attackerName,
+          targetName,
+          earlier);
+    }
+    return String.format(Locale.ROOT, ReportText.NOT_EVALUATED_SAME_FORCE, earlier);
+  }
+
+  /** What the intervening policy would move on the starting position, for the report. */
+  private List<OrderSummary> interveningPreview(final byte[] start, final Steps steps) {
+    final List<OrderSummary> summary = new ArrayList<>();
+    final Sandbox preview = Sandbox.fromBytes(start, settings.seed());
+    for (final String step : steps.interveningNonCombatMoves()) {
+      preview.position(step);
+      final GamePlayer player = preview.currentStep().getPlayerId();
+      summary.addAll(summarize(settings.interveningPolicy().orders(preview, player, step)));
+    }
+    return summary;
   }
 
   private OperationalPlan evaluate(
@@ -297,12 +473,14 @@ public final class OperationParisPlanner {
     return new OperationalPlan(
         family.id(),
         family.id().replaceAll("-r\\d$|-\\d+land|-\\d$", ""),
-        family.description(),
+        describe(family, forces),
         0,
+        false,
         false,
         family.retreatAfterRound(),
         results.isEmpty() ? List.of() : results.get(0).orders(),
         metrics,
+        List.of(),
         List.of(),
         errors.stream().sorted().toList());
   }
@@ -336,7 +514,9 @@ public final class OperationParisPlanner {
 
     if (family.germanStrike()) {
       sandbox.policy(attackerName).retreatAfterRound(family.retreatAfterRound());
-      final List<Order> orders = ordersInto(sandbox, attacker, germanForce, target, orderErrors);
+      final List<Order> orders =
+          ordersInto(
+              sandbox, steps.attackerCombatMove(), attacker, germanForce, target, orderErrors);
       orderSummaries.add(new StepOrders(steps.attackerCombatMove(), summarize(orders)));
       final StepRun combatMove = simulator.runStep(steps.attackerCombatMove(), orders);
       orderErrors.addAll(combatMove.orderErrors());
@@ -351,8 +531,9 @@ public final class OperationParisPlanner {
       franceEmptied =
           !germanConquest
               && target
-                  .getMatches(Matches.enemyUnit(ally).and(Matches.unitIsNotInfrastructure()))
+                  .getMatches(Matches.enemyUnit(attacker).and(Matches.unitIsNotInfrastructure()))
                   .isEmpty();
+      land(sandbox, simulator, steps.attackerNonCombatMove(), attacker, orderErrors);
     }
 
     for (final String step : steps.interveningNonCombatMoves()) {
@@ -366,11 +547,13 @@ public final class OperationParisPlanner {
     if (family.italianAttack()
         && !ally.equals(target.getOwner())
         && sandbox.data().getRelationshipTracker().isAtWar(ally, target.getOwner())) {
-      final List<Order> orders = ordersInto(sandbox, ally, allyForce, target, orderErrors);
+      final List<Order> orders =
+          ordersInto(sandbox, steps.allyCombatMove(), ally, allyForce, target, orderErrors);
       orderSummaries.add(new StepOrders(steps.allyCombatMove(), summarize(orders)));
       final StepRun combatMove = simulator.runStep(steps.allyCombatMove(), orders);
       orderErrors.addAll(combatMove.orderErrors());
       simulator.runStep(steps.allyBattle());
+      land(sandbox, simulator, steps.allyNonCombatMove(), ally, orderErrors);
     }
 
     final Set<UUID> alive = unitsOnTheMap(sandbox);
@@ -393,13 +576,35 @@ public final class OperationParisPlanner {
         orderErrors);
   }
 
-  /** One order per origin territory, along the map's cheapest passable route into the target. */
+  /**
+   * The mover's non-combat move: aircraft that cannot stay where they are fly to the nearest place
+   * the engine accepts, so survivors are not removed at the end of the step.
+   */
+  private static void land(
+      final Sandbox sandbox,
+      final TurnSimulator simulator,
+      final String step,
+      final GamePlayer player,
+      final List<String> errors) {
+    sandbox.position(step);
+    final List<Order> orders = LandingPolicy.orders(sandbox.data(), player, sandbox.judge());
+    errors.addAll(simulator.runStep(step, orders).orderErrors());
+  }
+
+  /**
+   * One order per origin territory, along the first route into the target that the engine's
+   * validator accepts (friendly ground first); when none is legal the shortest route is ordered
+   * anyway so the engine's refusal is recorded.
+   */
   private static List<Order> ordersInto(
       final Sandbox sandbox,
+      final String step,
       final GamePlayer player,
       final List<Unit> force,
       final Territory target,
       final List<String> errors) {
+    sandbox.position(step);
+    final MoveJudge judge = sandbox.judge();
     final Map<Territory, List<Unit>> byOrigin = new LinkedHashMap<>();
     for (final Territory territory : sandbox.data().getMap().getTerritories()) {
       final List<Unit> here = territory.getUnits().stream().filter(force::contains).toList();
@@ -413,17 +618,24 @@ public final class OperationParisPlanner {
           if (origin.equals(target)) {
             return;
           }
-          final Optional<Route> route =
-              sandbox
-                  .data()
-                  .getMap()
-                  .getRouteForUnits(
-                      origin, target, Matches.territoryIsNotImpassable(), units, player);
-          if (route.isEmpty()) {
+          final List<Route> routes =
+              Routes.candidates(
+                  sandbox.data(),
+                  origin,
+                  target,
+                  Matches.territoryIsNotImpassable(),
+                  units,
+                  player);
+          if (routes.isEmpty()) {
             errors.add("No route from " + origin.getName() + " to " + target.getName());
-          } else {
-            orders.add(new Order(units, route.get()));
+            return;
           }
+          final Route chosen =
+              routes.stream()
+                  .filter(route -> judge.check(units, route).legal())
+                  .findFirst()
+                  .orElse(routes.get(0));
+          orders.add(new Order(units, chosen));
         });
     return orders;
   }
@@ -462,7 +674,8 @@ public final class OperationParisPlanner {
   }
 
   /** The strike forces, as units of the base sandbox (translated into each trajectory by id). */
-  private record Forces(List<Unit> air, List<Unit> landCheapestFirst, List<Unit> ally) {
+  private record Forces(
+      List<Unit> air, List<Unit> landCheapestFirst, List<Unit> ally, boolean allyCanAttack) {
     List<Unit> germanForce(final Family family) {
       if (!family.germanStrike()) {
         return List.of();
@@ -478,9 +691,11 @@ public final class OperationParisPlanner {
   private record Steps(
       String attackerCombatMove,
       String attackerBattle,
+      String attackerNonCombatMove,
       List<String> interveningNonCombatMoves,
       String allyCombatMove,
-      String allyBattle) {
+      String allyBattle,
+      String allyNonCombatMove) {
     static Steps of(
         final Sandbox sandbox,
         final GamePlayer attacker,
@@ -498,6 +713,7 @@ public final class OperationParisPlanner {
                   GameStep.isCombatMoveStepName(name)
                       && !GameStep.isAirborneCombatMoveStepName(name)),
           step(sandbox, attacker, GameStep::isBattleStepName),
+          step(sandbox, attacker, GameStep::isNonCombatMoveStepName),
           intervening,
           step(
               sandbox,
@@ -505,7 +721,8 @@ public final class OperationParisPlanner {
               name ->
                   GameStep.isCombatMoveStepName(name)
                       && !GameStep.isAirborneCombatMoveStepName(name)),
-          step(sandbox, ally, GameStep::isBattleStepName));
+          step(sandbox, ally, GameStep::isBattleStepName),
+          step(sandbox, ally, GameStep::isNonCombatMoveStepName));
     }
 
     private static String step(
