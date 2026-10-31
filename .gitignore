@@ -28,3 +28,7 @@ out/
 
 CLAUDE.local.md
 
+
+# General Staff launcher (per-developer port and clickable launcher)
+.port
+*.command

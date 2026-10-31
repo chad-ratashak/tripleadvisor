@@ -18,6 +18,8 @@ This is a multi-module Gradle (Kotlin DSL) project. Key top-level directories:
 | `gradle/build-logic/` | Custom Gradle convention plugins                                  |
 
 Gradle project names are flat (`:game-core`, not `:game-app:game-core`); see `settings.gradle.kts`.
+The AI General Staff initiative (brief, reconnaissance report, architecture plan) is documented in
+`docs/general-staff/`; its code is the `:general-staff` module (`game-app/general-staff/AGENTS.md`).
 Each module's dependencies are in its `build.gradle.kts`.
 
 ### Module Dependency Overview
@@ -28,6 +30,7 @@ game-app/game-headless ─→ game-core, ai, domain-data, lobby-client, lib/java
 game-app/ai ───────────→ game-core, lib/java-extras
 game-app/game-core ────→ domain-data, map-data, game-relay-server, lobby-client, lib/java-extras, lib/swing-lib, lib/websocket-client, lib/xml-reader
 game-app/game-relay-server → lib/websocket-client, lib/websocket-server
+game-app/general-staff ──→ game-core, lib/java-extras (AI General Staff planner; see docs/general-staff/)
 http-clients/lobby-client → domain-data, lib/feign-common, lib/java-extras, lib/websocket-client
 ```
 
